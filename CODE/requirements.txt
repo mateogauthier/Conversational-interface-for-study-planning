@@ -1,3 +1,13 @@
 fastapi
 uvicorn
 requests
+python-dotenv
+python-multipart
+langchain
+langchain-community
+langchain-text-splitters
+chromadb
+sentence-transformers
+pypdf2
+python-docx
+openpyxl
