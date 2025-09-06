@@ -193,3 +193,31 @@ pyrightconfig.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
+
+# RAG System - Ignore uploaded files and database
+# Upload directory for documents
+CODE/uploads/
+uploads/
+
+# ChromaDB database files
+CODE/chroma_db/
+chroma_db/
+
+# Vector database files
+*.db
+*.sqlite
+*.index
+
+# RAG temporary files
+*.tmp
+*.temp
+
+# Sample/test documents (if any)
+CODE/*_notes.md
+CODE/*_document.*
+CODE/test_document.*
+CODE/sample_*
+*_notes.md
+*_document.*
+test_document.*
+sample_*
