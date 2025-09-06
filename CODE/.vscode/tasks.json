@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run FastAPI server",
+			"type": "shell",
+			"command": "/home/mgauthier/Documents/GitHub/Conversational-interface-for-study-planning/CODE/.venv/bin/python -m uvicorn main:app --reload",
+			"isBackground": true,
+			"problemMatcher": [
+				"$python"
+			],
+			"group": "build"
+		}
+	]
+}
