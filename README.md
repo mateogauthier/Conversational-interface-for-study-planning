@@ -17,7 +17,7 @@
 
 You should see output similar to:
 ```
-INFO:     Will watch for changes in these directories: ['/home/mgauthier/Documents/GitHub/Conversational-interface-for-study-planning/CODE']
+INFO:     Will watch for changes in these directories: ['/.../Conversational-interface-for-study-planning/CODE']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 INFO:     Started reloader process [19030] using StatReload
 INFO:     Started server process [19032]
