@@ -3,6 +3,7 @@ uvicorn
 requests
 python-dotenv
 python-multipart
+pydantic-settings
 langchain
 langchain-community
 langchain-text-splitters

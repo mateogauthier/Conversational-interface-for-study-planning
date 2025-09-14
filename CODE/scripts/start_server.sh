@@ -4,6 +4,13 @@
 
 echo "🚀 Starting RAG-powered Study Planning API..."
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Change to project root
+cd "$PROJECT_ROOT"
+
 # Global variables
 OLLAMA_STARTED_BY_SCRIPT=false
 OLLAMA_PID=""
@@ -41,7 +48,7 @@ source .venv/bin/activate
 
 # Check if requirements are installed
 echo "🔍 Checking dependencies..."
-python -c "import fastapi, chromadb, sentence_transformers, langchain" 2>/dev/null
+python -c "import fastapi, chromadb, sentence_transformers, langchain, pydantic_settings" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "❌ Some dependencies are missing. Installing..."
     pip install -r requirements.txt
@@ -49,8 +56,8 @@ fi
 
 # Create necessary directories
 echo "📁 Creating directories..."
-mkdir -p uploads
-mkdir -p chroma_db
+mkdir -p data/uploads
+mkdir -p data/chroma_db
 
 # Check if Ollama is running and start it if needed
 echo "🤖 Checking Ollama service..."
@@ -66,9 +73,9 @@ start_ollama() {
     echo "🔄 Starting Ollama service..."
     
     # Try using our helper script first
-    if [ -f "./manage_ollama.sh" ]; then
+    if [ -f "$SCRIPT_DIR/manage_ollama.sh" ]; then
         echo "   Using manage_ollama.sh helper..."
-        ./manage_ollama.sh start
+        "$SCRIPT_DIR/manage_ollama.sh" start
         if [ $? -eq 0 ]; then
             return 0
         fi
@@ -174,4 +181,4 @@ echo "   API documentation: http://localhost:8000/docs"
 echo ""
 echo "Press Ctrl+C to stop the server"
 
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
