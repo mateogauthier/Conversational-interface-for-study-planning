@@ -9,6 +9,6 @@ langchain-community
 langchain-text-splitters
 chromadb
 sentence-transformers
-pypdf2
+pypdf
 python-docx
 openpyxl
