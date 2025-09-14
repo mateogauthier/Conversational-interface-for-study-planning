@@ -199,6 +199,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 pip install -r requirements.txt
 ```
 
-## License
-
-[Add your license information here]
+## Default .env
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama2:latest
+UPLOAD_DIR=data/uploads
