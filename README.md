@@ -200,6 +200,8 @@ pip install -r requirements.txt
 ```
 
 ## Default .env
+```bash
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama2:latest
 UPLOAD_DIR=data/uploads
+```
