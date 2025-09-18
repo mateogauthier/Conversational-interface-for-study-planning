@@ -94,35 +94,20 @@ class LLMService:
                 if not self.ensure_model(model):
                     raise LLMException(f"Default model {self.default_model} is not available")
             
-            # Generate response
+                        # Generate response
             url = f"{self.base_url}/api/generate"
             payload = {
                 "model": model,
                 "prompt": prompt,
-                "stream": True
+                "stream": False  # Use non-streaming for more reliable response
             }
             
-            response = requests.post(url, json=payload, stream=True, timeout=self.timeout)
+            response = requests.post(url, json=payload, timeout=self.timeout)
             response.raise_for_status()
             
-            # Process streaming response
-            fragments = []
-            for line in response.iter_lines():
-                if line:
-                    try:
-                        decoded = line.decode('utf-8')
-                        obj = json.loads(decoded)
-                        fragment = obj.get("response", "")
-                        fragments.append(fragment)
-                        
-                        # Check if this is the last chunk
-                        if obj.get("done", False):
-                            break
-                            
-                    except json.JSONDecodeError:
-                        continue
-            
-            answer = "".join(fragments)
+            # Process non-streaming response
+            result = response.json()
+            answer = result.get("response", "")
             
             if not answer.strip():
                 raise LLMException("Empty response received from LLM")
@@ -143,14 +128,18 @@ class LLMService:
     
     def generate_with_context(self, prompt: str, context: str, model: Optional[str] = None) -> Dict[str, Any]:
         """Generate a response with provided context."""
-        enhanced_prompt = f"""Based on the following context, please answer the question:
-
-Context:
-{context}
+        # Truncate context if too long to prevent timeouts
+        max_context_length = 1500  # Reasonable limit for llama2
+        if len(context) > max_context_length:
+            context = context[:max_context_length] + "..."
+            logger.info(f"Context truncated to {max_context_length} characters")
+        
+        # Use a concise prompt to reduce processing time
+        enhanced_prompt = f"""Context: {context}
 
 Question: {prompt}
 
-Please provide a comprehensive answer based on the context provided above."""
+Answer:"""
         
         return self.generate_response(enhanced_prompt, model)
     

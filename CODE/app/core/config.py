@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Ollama Configuration
     ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
     ollama_model: str = Field(default="llama2", env="OLLAMA_MODEL")
-    ollama_timeout: int = 30
+    ollama_timeout: int = 90  # Balanced timeout for RAG queries
     
     # File Storage Configuration
     upload_dir: str = "data/uploads"
