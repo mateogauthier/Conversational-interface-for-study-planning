@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
     max_chunks_for_context: int = 5
     
+    # LLM Response Configuration
+    default_language: str = Field(default="auto", env="DEFAULT_LANGUAGE")  # "auto", "spanish", "english"
+    response_instructions: str = Field(default="", env="RESPONSE_INSTRUCTIONS")
+    max_context_length: int = Field(default=1500, env="MAX_CONTEXT_LENGTH")
+    
     # CORS Configuration
     cors_origins: list[str] = ["*"]
     cors_methods: list[str] = ["*"]

@@ -204,4 +204,7 @@ pip install -r requirements.txt
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama2:latest
 UPLOAD_DIR=data/uploads
+DEFAULT_LANGUAGE=auto
+RESPONSE_INSTRUCTIONS=
+MAX_CONTEXT_LENGTH=1500
 ```

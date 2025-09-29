@@ -37,7 +37,10 @@ async def rag_search(
             try:
                 llm_response = llm_service.generate_with_context(
                     request.prompt, 
-                    search_results["context"]
+                    search_results["context"],
+                    model=request.model,
+                    language=request.language,
+                    instructions=request.instructions
                 )
                 
                 return RAGLLMResponse(
@@ -96,7 +99,9 @@ async def rag_llm_query(
         llm_response = llm_service.generate_with_context(
             request.prompt, 
             search_results["context"],
-            request.model
+            model=request.model,
+            language=request.language,
+            instructions=request.instructions
         )
         
         sources = list(set([chunk.metadata.get('file_name', 'Unknown') 

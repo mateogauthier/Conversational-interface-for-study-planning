@@ -126,22 +126,57 @@ class LLMService:
             logger.error(f"Unexpected error in LLM query: {str(e)}")
             raise LLMException(f"Error generating response: {str(e)}")
     
-    def generate_with_context(self, prompt: str, context: str, model: Optional[str] = None) -> Dict[str, Any]:
+    def generate_with_context(self, prompt: str, context: str, model: Optional[str] = None, 
+                             language: Optional[str] = None, instructions: Optional[str] = None) -> Dict[str, Any]:
         """Generate a response with provided context."""
+        from app.core.config import get_settings
+        settings = get_settings()
+        
         # Truncate context if too long to prevent timeouts
-        max_context_length = 1500  # Reasonable limit for llama2
+        max_context_length = settings.max_context_length
         if len(context) > max_context_length:
             context = context[:max_context_length] + "..."
             logger.info(f"Context truncated to {max_context_length} characters")
         
-        # Use a concise prompt to reduce processing time
+        # Determine language instruction
+        language_instruction = self._get_language_instruction(prompt, language, settings)
+        
+        # Combine custom instructions with language instruction
+        all_instructions = [language_instruction]
+        if instructions:
+            all_instructions.append(instructions)
+        if settings.response_instructions:
+            all_instructions.append(settings.response_instructions)
+        
+        combined_instructions = " ".join(all_instructions)
+        
+        # Create enhanced prompt with language and context
         enhanced_prompt = f"""Context: {context}
 
 Question: {prompt}
 
+Instructions: {combined_instructions} Base your answer on the provided context.
+
 Answer:"""
         
         return self.generate_response(enhanced_prompt, model)
+    
+    def _get_language_instruction(self, prompt: str, language: Optional[str], settings) -> str:
+        """Generate appropriate language instruction based on preferences and detection."""
+        if language == "spanish":
+            return "Responde en español."
+        elif language == "english":
+            return "Answer in English."
+        elif language == "auto" or language is None:
+            # Auto-detect language from the prompt
+            spanish_indicators = ['qué', 'cómo', 'cuándo', 'dónde', 'por qué', 'cuál', 'dice', 'sobre', 
+                                'reglamento', 'estudiantil', 'es', 'son', 'tiene', 'hay', 'puede', 'debe']
+            if any(indicator.lower() in prompt.lower() for indicator in spanish_indicators):
+                return "Responde en español."
+            else:
+                return "Answer in the same language as the question."
+        else:
+            return f"Answer in {language}."
     
     def get_service_info(self) -> Dict[str, Any]:
         """Get information about the LLM service."""

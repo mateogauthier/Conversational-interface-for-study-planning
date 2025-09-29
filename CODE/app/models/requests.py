@@ -22,6 +22,8 @@ class RAGLLMRequest(BaseModel):
     prompt: str = Field(..., description="The query to search for and answer")
     n_results: Optional[int] = Field(5, description="Number of relevant chunks to retrieve", ge=1, le=20)
     model: Optional[str] = Field(None, description="Specific LLM model to use (optional)")
+    language: Optional[str] = Field(None, description="Response language preference: 'spanish', 'english', or 'auto' for detection")
+    instructions: Optional[str] = Field(None, description="Additional instructions for the LLM response")
 
 
 class FileDeleteRequest(BaseModel):
