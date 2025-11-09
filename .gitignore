@@ -221,3 +221,6 @@ CODE/sample_*
 *_document.*
 test_document.*
 sample_*
+
+# claude
+.claude
