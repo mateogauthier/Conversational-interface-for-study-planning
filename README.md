@@ -22,7 +22,8 @@ A FastAPI-based conversational interface that uses Retrieval-Augmented Generatio
 
 ### Docker (Recommended)
 
-**Prerequisites:** Docker Desktop with **8GB+ memory** allocated
+**Prerequisites:** Docker Desktop with **10GB+ memory** allocated
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/Conversational-interface-for-study-planning.git
@@ -44,6 +45,8 @@ docker compose logs -f
 - 🌐 **API**: http://localhost:8000
 - 📚 **Documentation**: http://localhost:8000/docs
 - 📖 **Alternative Docs**: http://localhost:8000/redoc
+
+**Important**: If you get a 503 error when querying the LLM, you need to increase Docker Desktop's memory allocation to at least 10GB in Settings → Resources. See the [Troubleshooting](#troubleshooting) section below.
 
 ### Native Setup (Without Docker)
 
@@ -222,8 +225,6 @@ docker compose down && docker compose up -d
 # Full reset (WARNING: deletes all data)
 docker compose down -v
 ```
-
-**See [DOCKER-QUICKSTART.md](DOCKER-QUICKSTART.md) for detailed Docker guide.**
 
 ## Project Structure
 

@@ -46,8 +46,6 @@ docker exec -it study-planning-ollama bash
 docker exec study-planning-ollama ollama pull llama2:latest
 ```
 
-**See [DOCKER-QUICKSTART.md](DOCKER-QUICKSTART.md) for detailed Docker usage guide.**
-
 ### Native Development (Without Docker)
 
 ```bash
