@@ -65,10 +65,10 @@ services:
       resources:
         limits:
           cpus: '4'
-          memory: 8G
+          memory: 10G
         reservations:
           cpus: '1'
-          memory: 2G
+          memory: 4G
     # Uncomment below for GPU support (requires nvidia-docker)
     # deploy:
     #   resources:
