@@ -6,14 +6,14 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 import chromadb
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
-    PyPDFLoader, 
+    PyPDFLoader,
     TextLoader,
     UnstructuredWordDocumentLoader,
     UnstructuredExcelLoader
 )
-from langchain.schema import Document
+from langchain_core.documents import Document
 from sentence_transformers import SentenceTransformer
 
 from app.core.config import get_settings

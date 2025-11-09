@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # FastAPI Application Service (Production)
+  fastapi-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: study-planning-api-prod
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama2:latest
+      - UPLOAD_DIR=data/uploads
+      - DEFAULT_LANGUAGE=auto
+      - RESPONSE_INSTRUCTIONS=
+      - MAX_CONTEXT_LENGTH=1500
+    volumes:
+      # Named volumes only (NO source code bind mount for production)
+      - uploads:/app/data/uploads
+      - chroma_db:/app/data/chroma_db
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - study-planning-network
+    # Production command: NO --reload flag
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Ollama LLM Service (Production)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: study-planning-ollama-prod
+    # Internal port only (not exposed to host for security)
+    expose:
+      - "11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - study-planning-network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    # Uncomment below for GPU support (requires nvidia-docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  study-planning-network:
+    driver: bridge
+
+volumes:
+  # Persistent data volumes
+  uploads:
+    driver: local
+  chroma_db:
+    driver: local
+  ollama-models:
+    driver: local

@@ -1,0 +1,67 @@
+# Python cache and bytecode
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+
+# Virtual environments
+.venv
+venv
+ENV
+env
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!CODE/requirements.txt
+docs/
+
+# Tests
+CODE/tests/
+*.test.py
+test_*
+
+# Data directories (will be mounted as volumes)
+CODE/data/
+data/
+
+# Environment files (use docker-compose env vars instead)
+.env
+*.env
+
+# Logs
+*.log
+logs/
+CODE/__pycache__
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Docker files (no need to copy into image)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Temporary files
+tmp/
+temp/
+*.tmp
