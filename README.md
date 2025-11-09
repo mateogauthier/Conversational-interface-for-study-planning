@@ -1,14 +1,16 @@
 # RAG-powered Study Planning API
 
-A FastAPI-based conversational interface that uses Retrieval-Augmented Generation (RAG) to help students interact with their study materials. Upload documents, ask questions, and get intelligent answers backed by your own content.
+A complete study planning system with a modern React frontend and FastAPI backend that uses Retrieval-Augmented Generation (RAG) to help students interact with their study materials. Upload documents, ask questions, and get intelligent answers backed by your own content.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-00a393.svg)](https://fastapi.tiangolo.com)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org)
+[![React](https://img.shields.io/badge/React-18+-61dafb.svg)](https://reactjs.org)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com)
 [![Ollama](https://img.shields.io/badge/Ollama-LLM-FF6B6B.svg)](https://ollama.ai)
 
 ## Features
 
+- 🎨 **Modern React Frontend**: Beautiful, responsive UI with drag-and-drop upload and chat interface
 - 📁 **Multi-format Document Upload**: PDF, Word, Excel, text, and Markdown files
 - 🔍 **Semantic Search**: Vector-based search using ChromaDB and sentence transformers
 - 🤖 **RAG with LLM**: Intelligent responses powered by Ollama (llama2, mistral, etc.)
@@ -41,9 +43,10 @@ docker compose logs -f
 
 **First startup**: Docker will build the containers (~5-10 min) and Ollama will download the llama2 model (~4GB, 10-20 min). Subsequent starts are much faster.
 
-**Access the API:**
-- 🌐 **API**: http://localhost:8000
-- 📚 **Documentation**: http://localhost:8000/docs
+**Access the Application:**
+- 🎨 **Frontend (Web UI)**: http://localhost:3000
+- 🌐 **Backend API**: http://localhost:8000
+- 📚 **API Documentation**: http://localhost:8000/docs
 - 📖 **Alternative Docs**: http://localhost:8000/redoc
 
 **Important**: If you get a 503 error when querying the LLM, you need to increase Docker Desktop's memory allocation to at least 10GB in Settings → Resources. See the [Troubleshooting](#troubleshooting) section below.
@@ -194,17 +197,45 @@ curl http://localhost:8000/rag/stats
 | `GET` | `/` | Root endpoint |
 | `GET` | `/health` | Overall health check |
 
+## Frontend (Web UI)
+
+The React frontend provides a user-friendly interface for all API features:
+
+### Quick Access
+- **Web Interface**: http://localhost:3000 (after running `docker compose up`)
+- **Development Mode**: See [FRONTEND_QUICKSTART.md](FRONTEND_QUICKSTART.md)
+
+### Pages
+- **Home**: System dashboard with statistics and quick actions
+- **Upload**: Drag-and-drop file upload with progress tracking
+- **Query**: Chat interface for asking questions about your documents
+- **Files**: Manage uploaded documents (view, delete)
+
+### Development
+```bash
+# Start frontend dev server (with hot-reload)
+cd FRONTEND
+npm install
+npm run dev
+# Access at http://localhost:3000
+```
+
+For detailed frontend documentation, see:
+- [FRONTEND/README.md](FRONTEND/README.md) - Complete frontend guide
+- [FRONTEND_QUICKSTART.md](FRONTEND_QUICKSTART.md) - Quick start guide
+
 ## Docker Commands
 
 ```bash
 # Development workflow
-docker compose up              # Start with logs (hot-reload enabled)
+docker compose up              # Start all services (frontend + backend + LLM)
 docker compose up -d           # Start in background
 docker compose logs -f         # View logs
+docker compose logs -f frontend # View frontend logs only
 docker compose ps              # Check status
 docker compose down            # Stop containers
 
-# When dependencies change (requirements.txt)
+# When dependencies change (requirements.txt or package.json)
 docker compose up --build      # Rebuild and start
 
 # Production deployment

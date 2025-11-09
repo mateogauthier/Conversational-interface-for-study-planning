@@ -1,6 +1,24 @@
-version: '3.8'
-
 services:
+  # Frontend Service (React + Nginx)
+  frontend:
+    build:
+      context: ./FRONTEND
+      dockerfile: Dockerfile
+    container_name: study-planning-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - fastapi-app
+    networks:
+      - study-planning-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   # FastAPI Application Service
   fastapi-app:
     build:
