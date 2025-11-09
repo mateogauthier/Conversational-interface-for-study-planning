@@ -1,14 +1,16 @@
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Home, FolderOpen, Settings } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import './App.css';
 
 // Import pages
 import HomePage from './pages/HomePage';
-import UploadPage from './pages/UploadPage';
-import QueryPage from './pages/QueryPage';
 import FilesPage from './pages/FilesPage';
+import SettingsPage from './pages/SettingsPage';
 
 function App() {
+  const { t } = useTranslation();
+
   return (
     <Router>
       <div className="app">
@@ -16,7 +18,7 @@ function App() {
           <div className="header-content">
             <h1>
               <BookOpen size={32} />
-              Study Planning Assistant
+              {t('appTitle')}
             </h1>
             <nav className="nav">
               <NavLink
@@ -24,25 +26,22 @@ function App() {
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
                 end
               >
-                Home
-              </NavLink>
-              <NavLink
-                to="/upload"
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              >
-                Upload
-              </NavLink>
-              <NavLink
-                to="/query"
-                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-              >
-                Query
+                <Home size={20} />
+                {t('nav.home')}
               </NavLink>
               <NavLink
                 to="/files"
                 className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
               >
-                Files
+                <FolderOpen size={20} />
+                {t('nav.files')}
+              </NavLink>
+              <NavLink
+                to="/settings"
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              >
+                <Settings size={20} />
+                {t('nav.settings')}
               </NavLink>
             </nav>
           </div>
@@ -51,9 +50,9 @@ function App() {
         <main className="main-content">
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/upload" element={<UploadPage />} />
-            <Route path="/query" element={<QueryPage />} />
+            <Route path="/home" element={<HomePage />} />
             <Route path="/files" element={<FilesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>
       </div>
