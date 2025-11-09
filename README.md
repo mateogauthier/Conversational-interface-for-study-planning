@@ -22,8 +22,7 @@ A FastAPI-based conversational interface that uses Retrieval-Augmented Generatio
 
 ### Docker (Recommended)
 
-**Prerequisites:** Docker Desktop with **8GB+ memory** allocated (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md))
-
+**Prerequisites:** Docker Desktop with **8GB+ memory** allocated
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/Conversational-interface-for-study-planning.git
