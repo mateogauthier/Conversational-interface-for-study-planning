@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libmagic1 \
     poppler-utils \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 2: Dependencies installation
@@ -43,7 +44,9 @@ COPY --from=dependencies /usr/local/bin /usr/local/bin
 
 # Copy entrypoint script BEFORE copying app code (to avoid bind mount issues)
 COPY --chown=appuser:appuser scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Fix line endings for Windows compatibility (CRLF -> LF)
+RUN dos2unix /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Copy application code
 COPY --chown=appuser:appuser . .

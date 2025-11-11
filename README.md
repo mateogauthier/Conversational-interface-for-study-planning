@@ -51,6 +51,35 @@ docker compose logs -f
 
 **Important**: If you get a 503 error when querying the LLM, you need to increase Docker Desktop's memory allocation to at least 10GB in Settings → Resources. See the [Troubleshooting](#troubleshooting) section below.
 
+### 🪟 Windows Users: Important Setup Notes
+
+<details>
+<summary><strong>⚠️ Click here if you're on Windows (Recommended)</strong></summary>
+
+Windows users may encounter Docker build failures due to Git's automatic line ending conversion. The repository is configured to handle this automatically, but you can validate your setup:
+
+**Quick Validation (Optional):**
+```bash
+# Run this script to check if your files have correct line endings
+bash CODE/scripts/validate-docker-files.sh
+```
+
+**The Good News:**
+- The Dockerfile automatically fixes line endings during build using `dos2unix`
+- The `.gitattributes` file ensures fresh clones have correct line endings
+- You can safely run `docker compose up` - it will work!
+
+**If You Encounter Build Errors:**
+See the [Windows Troubleshooting](#windows-docker-build-fails-with-no-such-file-or-directory-for-docker-entrypointsh) section for detailed solutions.
+
+**Memory Requirements:**
+Make sure Docker Desktop has at least **10GB memory** allocated:
+- Open Docker Desktop → Settings → Resources → Memory
+- Increase to 10GB or higher
+- Click "Apply & Restart"
+
+</details>
+
 ### Native Setup (Without Docker)
 
 <details>
@@ -434,25 +463,66 @@ python tests/demo_rag.py
 
 ### Windows: Docker Build Fails with "No such file or directory" for docker-entrypoint.sh
 
-**Problem**: Git on Windows may checkout shell scripts with Windows line endings (CRLF), causing Docker build failures.
+**Problem**: Git on Windows may checkout shell scripts with Windows line endings (CRLF), causing Docker build failures with errors like:
+- `exec format error`
+- `No such file or directory: /usr/local/bin/docker-entrypoint.sh`
+- `cannot execute binary file`
 
-**Solution**:
+**Root Cause**: Windows Git converts Unix line endings (LF: `\n`) to Windows line endings (CRLF: `\r\n`). When the Linux container tries to execute the script, bash interprets the shebang as `#!/bin/bash\r` (with carriage return), which doesn't exist.
+
+**Automatic Fix (Recommended)**:
+
+The Dockerfile now **automatically fixes line endings during build** using `dos2unix`. Simply run:
 
 ```bash
-# Option 1: Re-clone the repository with proper line endings
+docker compose up --build
+```
+
+The build process will convert any CRLF line endings to LF automatically. This works regardless of your Git configuration!
+
+**Validation (Optional)**:
+
+Check if your files have correct line endings before building:
+
+```bash
+# Run the validation script
+bash CODE/scripts/validate-docker-files.sh
+```
+
+This script will:
+- ✅ Check all shell scripts and Docker files for correct line endings
+- ❌ Report any files with Windows (CRLF) line endings
+- 📝 Provide specific fix instructions if issues are found
+
+**Manual Fixes (If Needed)**:
+
+If you prefer to fix line endings before building:
+
+```bash
+# Option 1: Install and use dos2unix
+# Download from: https://sourceforge.net/projects/dos2unix/
+dos2unix CODE/scripts/*.sh
+
+# Option 2: Re-clone with correct Git settings
 git config --global core.autocrlf false
+cd ..
 git clone https://github.com/yourusername/Conversational-interface-for-study-planning.git
 
-# Option 2: Fix line endings in existing clone
-# Install dos2unix for Windows: https://sourceforge.net/projects/dos2unix/
-dos2unix CODE/scripts/docker-entrypoint.sh
-
-# Option 3: Reset Git line endings
+# Option 3: Reset line endings in existing clone
+git config core.autocrlf false
 git rm --cached -r .
 git reset --hard
 ```
 
-The repository includes a `.gitattributes` file that ensures shell scripts always use Unix line endings (LF), preventing this issue on fresh clones.
+**Prevention for Future Clones**:
+
+The repository includes a `.gitattributes` file that forces Unix line endings (LF) for:
+- All shell scripts (`.sh`)
+- Dockerfiles
+- Python files (`.py`)
+- YAML files (`.yml`, `.yaml`)
+
+This ensures fresh clones always have correct line endings, but only applies to NEW checkouts after the `.gitattributes` was added.
 
 ### 503 Error: "LLM service not available"
 
