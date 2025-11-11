@@ -216,7 +216,7 @@ If Ollama is not available, the API will still start but LLM endpoints will retu
 
 **When to Rebuild**:
 - Changed `requirements.txt`: Rebuild required
-- Changed Dockerfile: Rebuild required
+- Changed `CODE/Dockerfile` or `FRONTEND/Dockerfile`: Rebuild required
 - Changed code only: No rebuild needed (bind mount)
 
 **Managing Data**:

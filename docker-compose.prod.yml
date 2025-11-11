@@ -4,7 +4,7 @@ services:
   # FastAPI Application Service (Production)
   fastapi-app:
     build:
-      context: .
+      context: ./CODE
       dockerfile: Dockerfile
     container_name: study-planning-api-prod
     ports:

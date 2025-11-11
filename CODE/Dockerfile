@@ -22,7 +22,7 @@ FROM base as dependencies
 WORKDIR /app
 
 # Copy requirements file
-COPY CODE/requirements.txt .
+COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -42,11 +42,11 @@ COPY --from=dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/
 COPY --from=dependencies /usr/local/bin /usr/local/bin
 
 # Copy entrypoint script BEFORE copying app code (to avoid bind mount issues)
-COPY --chown=appuser:appuser CODE/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chown=appuser:appuser scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Copy application code
-COPY --chown=appuser:appuser CODE/ .
+COPY --chown=appuser:appuser . .
 
 # Switch to non-root user
 USER appuser

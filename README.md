@@ -292,8 +292,12 @@ Conversational-interface-for-study-planning/
 │   │   ├── test_direct.py         # Unit tests
 │   │   ├── test_rag.py            # API tests
 │   │   └── demo_rag.py            # Full demo
-│   └── requirements.txt           # Python dependencies
-├── Dockerfile                      # Multi-stage Docker build
+│   ├── requirements.txt           # Python dependencies
+│   └── Dockerfile                 # Backend Docker build
+├── FRONTEND/
+│   ├── src/                        # React source code
+│   ├── Dockerfile                 # Frontend Docker build
+│   └── nginx.conf                 # Nginx configuration
 ├── docker-compose.yml              # Development setup
 ├── docker-compose.prod.yml         # Production setup
 ├── .dockerignore                   # Docker build exclusions
