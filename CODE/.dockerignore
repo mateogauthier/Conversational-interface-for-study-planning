@@ -31,17 +31,18 @@ env
 
 # Documentation
 *.md
-!CODE/requirements.txt
+!requirements.txt
 docs/
 
 # Tests
-CODE/tests/
+tests/
 *.test.py
 test_*
 
 # Data directories (will be mounted as volumes)
-CODE/data/
 data/
+uploads/
+chroma_db/
 
 # Environment files (use docker-compose env vars instead)
 .env
@@ -50,11 +51,6 @@ data/
 # Logs
 *.log
 logs/
-CODE/__pycache__
-
-# CI/CD
-.github
-.gitlab-ci.yml
 
 # Docker files (no need to copy into image)
 Dockerfile
