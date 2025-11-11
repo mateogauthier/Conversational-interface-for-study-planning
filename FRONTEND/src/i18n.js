@@ -104,10 +104,8 @@ const resources = {
 
       // Chunks Options
       chunks: {
-        '3': '3 chunks',
-        '5': '5 chunks',
-        '10': '10 chunks',
-        '15': '15 chunks'
+        chunk: 'chunk',
+        chunks: 'chunks'
       }
     }
   },
@@ -213,10 +211,8 @@ const resources = {
 
       // Chunks Options
       chunks: {
-        '3': '3 fragmentos',
-        '5': '5 fragmentos',
-        '10': '10 fragmentos',
-        '15': '15 fragmentos'
+        chunk: 'fragmento',
+        chunks: 'fragmentos'
       }
     }
   }

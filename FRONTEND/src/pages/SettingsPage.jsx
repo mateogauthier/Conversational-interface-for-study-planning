@@ -123,10 +123,11 @@ function SettingsPage() {
                     value={preferredChunks}
                     onChange={handleChunksChange}
                   >
-                    <option value="3">{t('chunks.3')}</option>
-                    <option value="5">{t('chunks.5')}</option>
-                    <option value="10">{t('chunks.10')}</option>
-                    <option value="15">{t('chunks.15')}</option>
+                    {Array.from({ length: 15 }, (_, i) => i + 1).map(num => (
+                      <option key={num} value={num.toString()}>
+                        {num} {num === 1 ? t('chunks.chunk') : t('chunks.chunks')}
+                      </option>
+                    ))}
                   </select>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#718096' }}>
                     {t('settings.contextChunksHint')}
