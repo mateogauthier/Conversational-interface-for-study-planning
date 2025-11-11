@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Files, Trash2, RefreshCw, File, CheckCircle, XCircle, Upload, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { fileApi } from '../services/api';
 
 function FilesPage() {
+  const { t } = useTranslation();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
@@ -48,7 +50,7 @@ function FilesPage() {
   };
 
   const handleDelete = async (filename) => {
-    if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+    if (!confirm(`${t('files.deleteConfirm')} "${filename}"?`)) {
       return;
     }
 
@@ -57,13 +59,13 @@ function FilesPage() {
       await fileApi.delete(filename);
       setMessage({
         type: 'success',
-        text: `File "${filename}" deleted successfully.`,
+        text: `"${filename}" ${t('files.deleteSuccess')}`,
       });
       await loadFiles();
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.detail || `Failed to delete "${filename}".`,
+        text: error.response?.data?.detail || `${t('files.deleteError')} "${filename}".`,
       });
     } finally {
       setDeleting(null);
@@ -118,8 +120,8 @@ function FilesPage() {
       setUploadMessage({
         type: 'success',
         text: response.processed_for_rag
-          ? `File uploaded and processed successfully!`
-          : `File uploaded but could not be processed for RAG.`,
+          ? t('files.uploadSuccess')
+          : t('files.uploadSuccessNoRag'),
       });
 
       setSelectedFile(null);
@@ -133,7 +135,7 @@ function FilesPage() {
     } catch (error) {
       setUploadMessage({
         type: 'error',
-        text: error.response?.data?.detail || 'Upload failed. Please try again.',
+        text: error.response?.data?.detail || t('files.uploadError'),
       });
     } finally {
       setUploading(false);
@@ -156,7 +158,7 @@ function FilesPage() {
       <div className="card">
         <h2 className="card-title">
           <Upload size={28} />
-          Upload Study Materials
+          {t('files.uploadTitle')}
         </h2>
 
         {uploadMessage && (
@@ -180,12 +182,12 @@ function FilesPage() {
             <Upload size={48} />
           </div>
           <div className="upload-text">
-            {selectedFile ? selectedFile.name : 'Click or drag file to upload'}
+            {selectedFile ? selectedFile.name : t('files.uploadHint')}
           </div>
           <div className="upload-hint">
             {selectedFile
-              ? `Size: ${formatFileSize(selectedFile.size)}`
-              : 'Supports PDF, Word, Excel, Text, and Markdown files'}
+              ? `${t('files.uploadHintSelected')}: ${formatFileSize(selectedFile.size)}`
+              : t('files.supportedFormats')}
           </div>
         </div>
 
@@ -210,7 +212,7 @@ function FilesPage() {
                   ></div>
                 </div>
                 <p style={{ textAlign: 'center', color: '#4a5568', marginTop: '0.5rem' }}>
-                  Uploading... {uploadProgress}%
+                  {t('files.uploading')} {uploadProgress}%
                 </p>
               </div>
             )}
@@ -223,7 +225,7 @@ function FilesPage() {
                   disabled={uploading}
                 >
                   <Upload size={20} />
-                  Upload File
+                  {t('files.uploadButton')}
                 </button>
                 <button
                   onClick={() => {
@@ -234,7 +236,7 @@ function FilesPage() {
                   }}
                   className="btn btn-secondary"
                 >
-                  Cancel
+                  {t('files.cancel')}
                 </button>
               </div>
             )}
@@ -251,7 +253,7 @@ function FilesPage() {
               ))}
             </div>
             <p style={{ color: '#718096', fontSize: '0.9rem', margin: 0 }}>
-              Maximum file size: {supportedExtensions.max_file_size_mb} MB
+              {t('files.maxFileSize')}: {supportedExtensions.max_file_size_mb} MB
             </p>
           </div>
         )}
@@ -262,7 +264,7 @@ function FilesPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 className="card-title" style={{ marginBottom: 0 }}>
             <Files size={28} />
-            Manage Files
+            {t('files.manageTitle')}
           </h2>
           <button
             onClick={loadFiles}
@@ -270,7 +272,7 @@ function FilesPage() {
             disabled={loading}
           >
             <RefreshCw size={20} />
-            Refresh
+            {t('files.refresh')}
           </button>
         </div>
 
@@ -288,16 +290,16 @@ function FilesPage() {
           <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#a0aec0' }}>
             <File size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
             <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>
-              No files uploaded yet
+              {t('files.noFiles')}
             </p>
             <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-              Upload some documents to get started
+              {t('files.noFilesHint')}
             </p>
           </div>
         ) : (
           <>
             <div style={{ marginBottom: '1rem', color: '#718096' }}>
-              Total files: {files.length}
+              {t('files.totalFiles')}: {files.length}
             </div>
 
             <div className="file-list">
@@ -310,11 +312,11 @@ function FilesPage() {
                     </div>
                     <div className="file-meta">
                       {file.file_type} • {formatFileSize(file.size_bytes)} •
-                      Uploaded: {formatDate(file.created_at)}
+                      {t('files.uploaded')}: {formatDate(file.created_at)}
                     </div>
                     {!file.is_supported && (
                       <div style={{ marginTop: '0.25rem', color: '#f56565', fontSize: '0.875rem' }}>
-                        ⚠ File type not supported for RAG processing
+                        ⚠ {t('files.unsupported')}
                       </div>
                     )}
                   </div>
@@ -327,11 +329,11 @@ function FilesPage() {
                       style={{ padding: '0.5rem 1rem' }}
                     >
                       {deleting === file.filename ? (
-                        <>Deleting...</>
+                        <>{t('files.deleting')}</>
                       ) : (
                         <>
                           <Trash2 size={16} />
-                          Delete
+                          {t('files.delete')}
                         </>
                       )}
                     </button>

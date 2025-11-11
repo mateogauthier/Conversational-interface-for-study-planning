@@ -1,2 +1,26 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Ensure shell scripts always use LF line endings (Unix-style)
+# This prevents issues when building Docker images on Windows
+*.sh text eol=lf
+
+# Python files should use LF
+*.py text eol=lf
+
+# Configuration files should use LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary

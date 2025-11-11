@@ -24,7 +24,10 @@ const resources = {
         clearChat: 'Clear Chat',
         thinking: 'Thinking...',
         sources: 'Sources',
-        model: 'Model'
+        model: 'Model',
+        useRAG: 'Use RAG (Retrieval-Augmented Generation)',
+        ragEnabled: 'Queries will use document context',
+        ragDisabled: 'Direct LLM queries without documents'
       },
 
       // Files Page
@@ -130,7 +133,10 @@ const resources = {
         clearChat: 'Limpiar Chat',
         thinking: 'Pensando...',
         sources: 'Fuentes',
-        model: 'Modelo'
+        model: 'Modelo',
+        useRAG: 'Usar RAG (Generación Aumentada con Recuperación)',
+        ragEnabled: 'Las consultas usarán el contexto de los documentos',
+        ragDisabled: 'Consultas directas al LLM sin documentos'
       },
 
       // Files Page

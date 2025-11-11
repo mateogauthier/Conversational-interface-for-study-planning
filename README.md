@@ -428,6 +428,28 @@ python tests/demo_rag.py
 
 ## Troubleshooting
 
+### Windows: Docker Build Fails with "No such file or directory" for docker-entrypoint.sh
+
+**Problem**: Git on Windows may checkout shell scripts with Windows line endings (CRLF), causing Docker build failures.
+
+**Solution**:
+
+```bash
+# Option 1: Re-clone the repository with proper line endings
+git config --global core.autocrlf false
+git clone https://github.com/yourusername/Conversational-interface-for-study-planning.git
+
+# Option 2: Fix line endings in existing clone
+# Install dos2unix for Windows: https://sourceforge.net/projects/dos2unix/
+dos2unix CODE/scripts/docker-entrypoint.sh
+
+# Option 3: Reset Git line endings
+git rm --cached -r .
+git reset --hard
+```
+
+The repository includes a `.gitattributes` file that ensures shell scripts always use Unix line endings (LF), preventing this issue on fresh clones.
+
 ### 503 Error: "LLM service not available"
 
 **Problem**: Ollama can't load the model due to insufficient memory.
