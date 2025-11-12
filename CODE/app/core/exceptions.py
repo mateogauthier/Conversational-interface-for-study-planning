@@ -134,3 +134,13 @@ class TokenExpiredHTTPException(HTTPException):
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"}
         )
+
+
+class NotFoundHTTPException(HTTPException):
+    """Not found HTTP exception (404)."""
+
+    def __init__(self, resource_type: str, resource_id: str):
+        super().__init__(
+            status_code=404,
+            detail=f"{resource_type} with ID '{resource_id}' not found"
+        )

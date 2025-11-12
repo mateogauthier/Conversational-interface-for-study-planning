@@ -8,11 +8,13 @@ from app.api.dependencies import (
     get_llm_service,
     get_current_user,
     get_current_admin,
-    get_user_service_dep
+    get_user_service_dep,
+    get_conversation_service_dep
 )
 from app.services.rag_service import RAGService
 from app.services.llm_service import LLMService
 from app.services.user_service import UserService
+from app.services.conversation_service import ConversationService
 from app.db.models import UserInDB
 from app.models.requests import RAGRequest, RAGLLMRequest
 from app.models.responses import (
@@ -105,18 +107,44 @@ async def rag_query(
     current_user: UserInDB = Depends(get_current_user),
     rag_service: RAGService = Depends(get_rag_service),
     llm_service: LLMService = Depends(get_llm_service),
-    user_service: UserService = Depends(get_user_service_dep)
+    user_service: UserService = Depends(get_user_service_dep),
+    conversation_service: ConversationService = Depends(get_conversation_service_dep)
 ):
     """
-    Query documents and get LLM-generated answer with user-based filtering.
+    Query documents and get LLM-generated answer with user-based filtering and conversation support.
 
     - Students: Query their private files + all public files
     - Admins: Query only public files
+    - Automatically creates conversations and maintains history
     """
     try:
         # Check if LLM is available
         if not llm_service.is_available():
             raise LLMNotAvailableHTTPException("LLM service is not available")
+
+        # Handle conversation flow
+        conversation_id = request.conversation_id
+        conversation_history = []
+
+        if conversation_id:
+            # Load existing conversation history
+            conversation_history = await conversation_service.get_conversation_history(
+                conversation_id=conversation_id
+            )
+        else:
+            # Auto-create new conversation
+            conversation_id = await conversation_service.create_conversation(
+                user_id=str(current_user.id),
+                auth0_id=current_user.auth0_id,
+                first_message=request.prompt
+            )
+
+        # Save user message to conversation
+        user_message_id = await conversation_service.add_message(
+            conversation_id=conversation_id,
+            role="user",
+            content=request.prompt
+        )
 
         # Search documents with user permissions
         search_results = rag_service.search_documents(
@@ -128,13 +156,27 @@ async def rag_query(
         # Increment user query count
         await user_service.increment_query_count(str(current_user.id))
 
-        # Generate answer with LLM
+        # Generate answer with LLM (including conversation history)
         llm_response = llm_service.generate_with_context(
-            request.prompt,
-            search_results["context"],
+            prompt=request.prompt,
+            context=search_results["context"],
             model=request.model,
             language=request.language,
-            instructions=request.instructions
+            instructions=request.instructions,
+            conversation_history=conversation_history
+        )
+
+        # Save assistant message to conversation
+        assistant_message_id = await conversation_service.add_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=llm_response["response"],
+            model_used=llm_response.get("model_used"),
+            metadata={
+                "sources": list(set([chunk.metadata.get('file_name', 'Unknown')
+                                   for chunk in search_results["relevant_chunks"]])),
+                "n_chunks": search_results["n_chunks_found"]
+            }
         )
 
         return RAGLLMResponse(
@@ -146,7 +188,9 @@ async def rag_query(
             sources=list(set([chunk.metadata.get('file_name', 'Unknown')
                             for chunk in search_results["relevant_chunks"]])),
             relevant_chunks=search_results["relevant_chunks"],
-            model_used=llm_response.get("model_used")
+            model_used=llm_response.get("model_used"),
+            conversation_id=conversation_id,
+            message_id=assistant_message_id
         )
 
     except (LLMException, LLMNotAvailableHTTPException):

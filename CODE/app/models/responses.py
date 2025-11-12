@@ -1,6 +1,6 @@
 """Response models for API endpoints."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -80,6 +80,8 @@ class RAGLLMResponse(BaseResponse):
     sources: List[str] = Field(..., description="Source files that contributed to the answer")
     relevant_chunks: List[RelevantChunk] = Field(..., description="List of relevant document chunks")
     model_used: Optional[str] = Field(None, description="LLM model used for generation")
+    conversation_id: str = Field(..., description="Conversation ID for this exchange")
+    message_id: str = Field(..., description="Message ID for this assistant response")
 
 
 class RAGStatsResponse(BaseResponse):
@@ -96,3 +98,40 @@ class APIInfoResponse(BaseResponse):
     version: str = Field(..., description="API version")
     description: str = Field(..., description="API description")
     endpoints: Dict[str, str] = Field(..., description="Available endpoints and their descriptions")
+
+
+class ConversationInfo(BaseModel):
+    """Conversation information model."""
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_serialization_defaults_required=True
+    )
+
+    id: str = Field(..., description="Conversation ID", alias="_id")
+    title: str = Field(..., description="Conversation title")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    message_count: int = Field(..., description="Number of messages in conversation")
+
+
+class MessageInfo(BaseModel):
+    """Message information model."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(..., description="Message ID", alias="_id")
+    role: str = Field(..., description="Message role (user or assistant)")
+    content: str = Field(..., description="Message content")
+    timestamp: datetime = Field(..., description="Message timestamp")
+    model_used: Optional[str] = Field(None, description="LLM model used (for assistant messages)")
+
+
+class ConversationListResponse(BaseResponse):
+    """List of conversations response."""
+    conversations: List[ConversationInfo] = Field(..., description="List of user's conversations")
+    total: int = Field(..., description="Total number of conversations")
+
+
+class ConversationDetailResponse(BaseResponse):
+    """Detailed conversation with messages response."""
+    conversation: ConversationInfo = Field(..., description="Conversation information")
+    messages: List[MessageInfo] = Field(..., description="List of messages in conversation")

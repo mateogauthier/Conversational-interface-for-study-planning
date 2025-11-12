@@ -126,39 +126,55 @@ class LLMService:
             logger.error(f"Unexpected error in LLM query: {str(e)}")
             raise LLMException(f"Error generating response: {str(e)}")
     
-    def generate_with_context(self, prompt: str, context: str, model: Optional[str] = None, 
-                             language: Optional[str] = None, instructions: Optional[str] = None) -> Dict[str, Any]:
-        """Generate a response with provided context."""
+    def generate_with_context(
+        self,
+        prompt: str,
+        context: str,
+        model: Optional[str] = None,
+        language: Optional[str] = None,
+        instructions: Optional[str] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None
+    ) -> Dict[str, Any]:
+        """Generate a response with provided context and optional conversation history."""
         from app.core.config import get_settings
         settings = get_settings()
-        
+
         # Truncate context if too long to prevent timeouts
         max_context_length = settings.max_context_length
         if len(context) > max_context_length:
             context = context[:max_context_length] + "..."
             logger.info(f"Context truncated to {max_context_length} characters")
-        
+
         # Determine language instruction
         language_instruction = self._get_language_instruction(prompt, language, settings)
-        
+
         # Combine custom instructions with language instruction
         all_instructions = [language_instruction]
         if instructions:
             all_instructions.append(instructions)
         if settings.response_instructions:
             all_instructions.append(settings.response_instructions)
-        
+
         combined_instructions = " ".join(all_instructions)
-        
-        # Create enhanced prompt with language and context
-        enhanced_prompt = f"""Context: {context}
 
-Question: {prompt}
+        # Build conversation history section if provided
+        history_section = ""
+        if conversation_history and len(conversation_history) > 0:
+            history_lines = ["Previous conversation:"]
+            for msg in conversation_history:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                history_lines.append(f"{role_label}: {msg['content']}")
+            history_section = "\n".join(history_lines) + "\n\n"
 
-Instructions: {combined_instructions} Base your answer on the provided context.
+        # Create enhanced prompt with optional history, context, and current question
+        enhanced_prompt = f"""{history_section}Context from documents: {context}
+
+Current question: {prompt}
+
+Instructions: {combined_instructions} Base your answer on the provided context and previous conversation.
 
 Answer:"""
-        
+
         return self.generate_response(enhanced_prompt, model)
     
     def _get_language_instruction(self, prompt: str, language: Optional[str], settings) -> str:

@@ -24,6 +24,7 @@ class RAGLLMRequest(BaseModel):
     model: Optional[str] = Field(None, description="Specific LLM model to use (optional)")
     language: Optional[str] = Field(None, description="Response language preference: 'spanish', 'english', or 'auto' for detection")
     instructions: Optional[str] = Field(None, description="Additional instructions for the LLM response")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID to continue an existing conversation")
 
 
 class FileDeleteRequest(BaseModel):

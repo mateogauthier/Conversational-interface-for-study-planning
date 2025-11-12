@@ -110,6 +110,7 @@ export const ragApi = {
       model: options.model || null,
       language: options.language || null,
       instructions: options.instructions || null,
+      conversation_id: options.conversationId || null,
     });
     return response.data;
   },
@@ -165,6 +166,29 @@ export const llmApi = {
   // Health check
   health: async () => {
     const response = await api.get('/llm/health');
+    return response.data;
+  },
+};
+
+// Conversation API
+export const conversationApi = {
+  // List user's conversations
+  list: async (limit = 50, skip = 0) => {
+    const response = await api.get('/conversations/', {
+      params: { limit, skip },
+    });
+    return response.data;
+  },
+
+  // Get specific conversation with messages
+  get: async (conversationId) => {
+    const response = await api.get(`/conversations/${conversationId}`);
+    return response.data;
+  },
+
+  // Delete conversation
+  delete: async (conversationId) => {
+    const response = await api.delete(`/conversations/${conversationId}`);
     return response.data;
   },
 };

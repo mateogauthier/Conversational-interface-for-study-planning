@@ -11,6 +11,7 @@ from app.services.llm_service import LLMService, llm_service
 from app.services.rag_service import RAGService, rag_service
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.user_service import UserService, get_user_service
+from app.services.conversation_service import ConversationService, get_conversation_service
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     UnauthorizedHTTPException,
@@ -63,6 +64,13 @@ async def get_user_service_dep(
 ) -> UserService:
     """Get user service dependency."""
     return get_user_service(database)
+
+
+async def get_conversation_service_dep(
+    database: AsyncIOMotorDatabase = Depends(get_database)
+) -> ConversationService:
+    """Get conversation service dependency."""
+    return get_conversation_service()
 
 
 async def get_current_user(

@@ -21,6 +21,9 @@ function SettingsPage() {
   const [preferredChunks, setPreferredChunks] = useState(
     localStorage.getItem('preferredChunks') || '5'
   );
+  const [useRAG, setUseRAG] = useState(
+    localStorage.getItem('useRAG') !== 'false' // Default to true
+  );
 
   // Wait for authentication to complete before loading data
   useEffect(() => {
@@ -69,6 +72,13 @@ function SettingsPage() {
     setPreferredChunks(newChunks);
     localStorage.setItem('preferredChunks', newChunks);
     setMessage({ type: 'success', text: t('settings.chunksSaved') });
+  };
+
+  const handleRAGToggle = (e) => {
+    const newValue = e.target.checked;
+    setUseRAG(newValue);
+    localStorage.setItem('useRAG', newValue.toString());
+    setMessage({ type: 'success', text: t('settings.ragSaved') });
   };
 
   // Show loading screen while authentication is in progress
@@ -132,6 +142,23 @@ function SettingsPage() {
                   </select>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#718096' }}>
                     {t('settings.languageHint')}
+                  </p>
+                </div>
+
+                {/* RAG Toggle */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <input
+                      type="checkbox"
+                      id="useRAG"
+                      checked={useRAG}
+                      onChange={handleRAGToggle}
+                      style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                    />
+                    {t('settings.useRAG')}
+                  </label>
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#718096' }}>
+                    {t('settings.useRAGHint')}
                   </p>
                 </div>
 

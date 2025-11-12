@@ -1,7 +1,7 @@
 """Pydantic models for MongoDB documents."""
 
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from bson import ObjectId
 
@@ -73,6 +73,49 @@ class FileMetadataInDB(BaseModel):
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
     processed: bool = Field(default=False, description="Whether file has been processed by RAG")
     chunk_count: int = Field(default=0, description="Number of chunks generated")
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={
+            ObjectId: str,
+            datetime: lambda v: v.isoformat()
+        }
+    )
+
+
+class ConversationInDB(BaseModel):
+    """Conversation document model for MongoDB."""
+
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    user_id: str = Field(..., description="MongoDB user ID (ObjectId as string)")
+    auth0_id: str = Field(..., description="Auth0 user ID for quick lookups")
+    title: str = Field(..., description="Auto-generated from first message")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    message_count: int = Field(default=0, description="Total number of messages in conversation")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata (model, language, etc.)")
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={
+            ObjectId: str,
+            datetime: lambda v: v.isoformat()
+        }
+    )
+
+
+class MessageInDB(BaseModel):
+    """Message document model for MongoDB."""
+
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    conversation_id: str = Field(..., description="Conversation ID (ObjectId as string)")
+    role: Literal["user", "assistant"] = Field(..., description="Message sender role")
+    content: str = Field(..., description="Message content")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    model_used: Optional[str] = Field(None, description="LLM model used for assistant messages")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata (sources, token count, etc.)")
 
     model_config = ConfigDict(
         populate_by_name=True,

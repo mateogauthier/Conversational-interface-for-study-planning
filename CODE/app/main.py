@@ -6,9 +6,10 @@ from fastapi.openapi.models import SecuritySchemeType, HTTPBearer
 import logging
 
 from app.core.config import get_settings
-from app.api.routes import files, llm, rag, users, admin
+from app.api.routes import files, llm, rag, users, admin, conversations
 from app.models.responses import APIInfoResponse, HealthResponse
 from app.db.database import mongodb
+from app.services import conversation_service as conv_service_module
 
 # Configure logging
 logging.basicConfig(
@@ -68,6 +69,11 @@ async def startup_event():
         await mongodb.connect()
         logger.info("MongoDB connected successfully")
 
+        # Initialize conversation service with database
+        db = mongodb.get_database()
+        conv_service_module.conversation_service = conv_service_module.ConversationService(db)
+        logger.info("Conversation service initialized")
+
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
         # Don't raise - allow app to start but services may not work
@@ -100,6 +106,7 @@ app.include_router(llm.router)
 app.include_router(rag.router)
 app.include_router(users.router)
 app.include_router(admin.router)
+app.include_router(conversations.router)
 
 
 @app.get("/", response_model=APIInfoResponse)
@@ -139,6 +146,11 @@ async def root():
                 "profile": "GET /users/me - Current user profile",
                 "stats": "GET /users/me/stats - Current user statistics",
                 "update": "PATCH /users/me - Update profile"
+            },
+            "conversations": {
+                "list": "GET /conversations/ - List user's conversations",
+                "get": "GET /conversations/{id} - Get conversation with messages",
+                "delete": "DELETE /conversations/{id} - Delete conversation"
             },
             "admin": {
                 "list_users": "GET /admin/users - List all users (admin only)",

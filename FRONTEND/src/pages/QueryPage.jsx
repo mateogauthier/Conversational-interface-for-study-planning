@@ -8,6 +8,10 @@ function QueryPage() {
   const [loading, setLoading] = useState(false);
   const [nResults, setNResults] = useState(5);
   const [language, setLanguage] = useState('auto');
+
+  // Conversation state
+  const [currentConversationId, setCurrentConversationId] = useState(null);
+
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -36,7 +40,11 @@ function QueryPage() {
       const response = await ragApi.query(query, {
         nResults,
         language: language === 'auto' ? null : language,
+        conversationId: currentConversationId, // Pass conversation ID
       });
+
+      // Update conversation ID from response
+      setCurrentConversationId(response.conversation_id);
 
       const assistantMessage = {
         type: 'assistant',
@@ -66,6 +74,7 @@ function QueryPage() {
 
   const clearChat = () => {
     setMessages([]);
+    setCurrentConversationId(null); // Reset conversation when clearing chat
   };
 
   return (
