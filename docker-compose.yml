@@ -19,6 +19,27 @@ services:
       retries: 3
       start_period: 20s
 
+  # MongoDB Database Service
+  mongodb:
+    image: mongo:7.0
+    container_name: study-planning-mongodb
+    ports:
+      - "27017:27017"  # Exposed for development access
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - study-planning-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # FastAPI Application Service
   fastapi-app:
     build:
@@ -28,12 +49,23 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # Auth0 Configuration (REQUIRED - set in .env file)
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_API_AUDIENCE=${AUTH0_API_AUDIENCE}
+      - AUTH0_ALGORITHMS=["RS256"]
+      # MongoDB Configuration
+      - MONGO_URI=mongodb://admin:password@mongodb:27017/?authSource=admin
+      - MONGO_DATABASE_NAME=study_planning
+      # Ollama Configuration
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=llama2:latest
+      # App Configuration
       - UPLOAD_DIR=data/uploads
       - DEFAULT_LANGUAGE=auto
       - RESPONSE_INSTRUCTIONS=
       - MAX_CONTEXT_LENGTH=1500
+      # CORS Configuration
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
     volumes:
       # Bind mount source code for hot-reload (DEVELOPMENT ONLY)
       - ./CODE:/app
@@ -41,6 +73,8 @@ services:
       - uploads:/app/data/uploads
       - chroma_db:/app/data/chroma_db
     depends_on:
+      mongodb:
+        condition: service_healthy
       ollama:
         condition: service_healthy
     networks:
@@ -98,4 +132,6 @@ volumes:
   chroma_db:
     driver: local
   ollama-models:
+    driver: local
+  mongo-data:
     driver: local

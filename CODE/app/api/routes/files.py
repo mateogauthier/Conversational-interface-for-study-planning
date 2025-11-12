@@ -1,138 +1,248 @@
-"""File management API routes."""
+"""File management API routes with authentication."""
 
+import logging
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from typing import List
 
-from app.api.dependencies import get_file_service, get_rag_service
+from app.api.dependencies import (
+    get_file_service,
+    get_rag_service,
+    get_current_user,
+    get_user_service_dep
+)
 from app.services.file_service import FileService
 from app.services.rag_service import RAGService
-from app.models.responses import (
-    FileUploadResponse, 
-    FileListResponse, 
-    FileInfo,
-    BaseResponse
-)
+from app.services.user_service import UserService
+from app.db.models import UserInDB, FileMetadataInDB
+from app.models.user import FileOwnershipInfo
+from app.models.responses import BaseResponse
+from app.core.config import get_settings
 from app.core.exceptions import (
     FileNotFoundHTTPException,
     FileTypeNotSupportedHTTPException,
     FileTooLargeHTTPException,
     FileProcessingException,
+    ForbiddenHTTPException,
     RAGException
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/files", tags=["files"])
+settings = get_settings()
 
 
-@router.post("/upload", response_model=FileUploadResponse)
+@router.post("/upload", response_model=dict)
 async def upload_file(
     file: UploadFile = File(...),
+    current_user: UserInDB = Depends(get_current_user),
     file_service: FileService = Depends(get_file_service),
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: RAGService = Depends(get_rag_service),
+    user_service: UserService = Depends(get_user_service_dep)
 ):
-    """Upload a document and process it for RAG."""
+    """
+    Upload a document and process it for RAG.
+
+    - Students: Files are uploaded as private
+    - Admins: Files are uploaded as public
+    """
     try:
-        # Save the file
-        file_path = file_service.save_file(file)
-        
+        # Determine if file should be public based on user role
+        is_public = (current_user.role == settings.admin_role)
+
+        # Save the file with user context
+        file_path, file_metadata = await file_service.save_file(
+            file=file,
+            user=current_user,
+            is_public=is_public
+        )
+
         # Process the file for RAG
+        chunk_count = 0
         processed_for_rag = False
         try:
-            processed_for_rag = rag_service.process_document(file_path)
+            chunk_count = rag_service.process_document(
+                file_path=file_path,
+                user_id=str(current_user.id),
+                is_public=is_public,
+                filename=file_metadata.filename
+            )
+            processed_for_rag = chunk_count > 0
+
+            # Update file metadata with processing status
+            await file_service.update_file_processed_status(
+                filename=file_metadata.filename,
+                processed=processed_for_rag,
+                chunk_count=chunk_count
+            )
         except RAGException as e:
-            # File saved but RAG processing failed
-            pass
-        
-        # Get file info
-        file_info = file_service.get_file_info(file.filename)
-        
-        return FileUploadResponse(
-            message="File uploaded successfully",
-            filename=file.filename,
-            file_path=file_path,
-            processed_for_rag=processed_for_rag,
-            file_info=file_info
+            logger.warning(f"RAG processing failed for {file_metadata.filename}: {e}")
+            # File saved but RAG processing failed - continue
+
+        # Update user statistics
+        await user_service.increment_upload_count(
+            user_id=str(current_user.id),
+            file_size=file_metadata.file_size
         )
-        
+
+        return {
+            "message": "File uploaded successfully",
+            "filename": file_metadata.filename,
+            "file_path": file_path,
+            "is_public": is_public,
+            "processed_for_rag": processed_for_rag,
+            "chunk_count": chunk_count,
+            "file_size": file_metadata.file_size,
+            "uploaded_by": current_user.email
+        }
+
     except (FileTypeNotSupportedHTTPException, FileTooLargeHTTPException, FileNotFoundHTTPException):
         raise
     except FileProcessingException as e:
         raise HTTPException(status_code=500, detail=str(e.message))
     except Exception as e:
+        logger.error(f"Upload failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@router.get("/", response_model=FileListResponse)
+@router.get("/", response_model=List[FileOwnershipInfo])
 async def list_files(
+    current_user: UserInDB = Depends(get_current_user),
     file_service: FileService = Depends(get_file_service)
 ):
-    """List all uploaded files with metadata."""
+    """
+    List files based on user role.
+
+    - Students: See their private files + all public files
+    - Admins: See only public files
+    """
     try:
-        files = file_service.list_files()
-        return FileListResponse(
-            message="Files retrieved successfully",
-            files=files,
-            total_files=len(files)
-        )
+        files = await file_service.list_files(user=current_user)
+
+        # Convert to FileOwnershipInfo response
+        file_info_list = []
+        for file_metadata in files:
+            # Get user email (would need to query users collection - simplified here)
+            file_info = FileOwnershipInfo(
+                filename=file_metadata.filename,
+                user_id=file_metadata.user_id,
+                user_email=file_metadata.auth0_id,  # Simplified: using auth0_id
+                is_public=file_metadata.is_public,
+                uploaded_at=file_metadata.uploaded_at,
+                file_size=file_metadata.file_size,
+                chunk_count=file_metadata.chunk_count
+            )
+            file_info_list.append(file_info)
+
+        return file_info_list
+
     except FileProcessingException as e:
         raise HTTPException(status_code=500, detail=str(e.message))
     except Exception as e:
+        logger.error(f"Error listing files: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error listing files: {str(e)}")
 
 
-@router.get("/{filename}", response_model=FileInfo)
+@router.get("/{filename}", response_model=FileOwnershipInfo)
 async def get_file_details(
     filename: str,
+    current_user: UserInDB = Depends(get_current_user),
     file_service: FileService = Depends(get_file_service)
 ):
-    """Get detailed information about a specific file."""
+    """Get detailed information about a specific file (if user has access)."""
     try:
-        file_info = file_service.get_file_info(filename)
-        return file_info
-    except FileNotFoundHTTPException:
+        # Check if user can access this file
+        can_access = await file_service.can_user_access_file(filename, current_user)
+
+        if not can_access:
+            raise ForbiddenHTTPException("You do not have permission to access this file")
+
+        # Get file metadata
+        file_metadata = await file_service.get_file_metadata_by_name(filename)
+
+        if not file_metadata:
+            raise FileNotFoundHTTPException(filename)
+
+        return FileOwnershipInfo(
+            filename=file_metadata.filename,
+            user_id=file_metadata.user_id,
+            user_email=file_metadata.auth0_id,
+            is_public=file_metadata.is_public,
+            uploaded_at=file_metadata.uploaded_at,
+            file_size=file_metadata.file_size,
+            chunk_count=file_metadata.chunk_count
+        )
+
+    except (FileNotFoundHTTPException, ForbiddenHTTPException):
         raise
     except FileProcessingException as e:
         raise HTTPException(status_code=500, detail=str(e.message))
     except Exception as e:
+        logger.error(f"Error getting file details: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting file details: {str(e)}")
 
 
 @router.delete("/{filename}", response_model=BaseResponse)
 async def delete_file(
     filename: str,
+    current_user: UserInDB = Depends(get_current_user),
     file_service: FileService = Depends(get_file_service),
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: RAGService = Depends(get_rag_service),
+    user_service: UserService = Depends(get_user_service_dep)
 ):
-    """Delete a specific file and its RAG data."""
+    """
+    Delete a specific file and its RAG data.
+
+    - Students: Can only delete their own private files
+    - Admins: Can only delete public files
+    """
     try:
+        # Get file metadata first (for size info before deletion)
+        file_metadata = await file_service.get_file_metadata_by_name(filename)
+
+        if not file_metadata:
+            raise FileNotFoundHTTPException(filename)
+
         # Delete from RAG first (if exists)
         try:
-            rag_service.delete_document_chunks(filename)
-        except RAGException:
-            pass  # Continue even if RAG deletion fails
-        
-        # Delete the file
-        success = file_service.delete_file(filename)
-        
+            rag_service.delete_document_chunks(
+                filename=filename,
+                user_id=file_metadata.user_id
+            )
+        except RAGException as e:
+            logger.warning(f"RAG deletion failed for {filename}: {e}")
+            # Continue even if RAG deletion fails
+
+        # Delete the file (with permission check inside)
+        success = await file_service.delete_file(filename, current_user)
+
         if success:
+            # Update user statistics
+            await user_service.decrement_upload_count(
+                user_id=file_metadata.user_id,
+                file_size=file_metadata.file_size
+            )
+
             return BaseResponse(
                 message=f"File '{filename}' deleted successfully"
             )
         else:
             raise HTTPException(status_code=500, detail="Failed to delete file")
-            
-    except FileNotFoundHTTPException:
+
+    except (FileNotFoundHTTPException, ForbiddenHTTPException):
         raise
     except FileProcessingException as e:
         raise HTTPException(status_code=500, detail=str(e.message))
     except Exception as e:
+        logger.error(f"Error deleting file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
 
 
 @router.get("/supported/extensions")
 async def get_supported_extensions(
+    current_user: UserInDB = Depends(get_current_user),
     file_service: FileService = Depends(get_file_service)
 ):
-    """Get supported file extensions and their descriptions."""
+    """Get supported file extensions and their descriptions (authenticated users only)."""
     return {
         "supported_extensions": file_service.get_supported_extensions(),
         "max_file_size_mb": file_service.max_file_size / (1024 * 1024)

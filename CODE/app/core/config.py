@@ -2,14 +2,21 @@
 
 import os
 from pathlib import Path
-from typing import Optional
-from pydantic_settings import BaseSettings
-from pydantic import Field
+from typing import Optional, List, Union
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
 
 
 class Settings(BaseSettings):
     """Application settings."""
-    
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
     # API Configuration
     api_title: str = "Study Planning Conversational Interface"
     api_description: str = "A RAG-powered API for study planning with document upload and intelligent querying"
@@ -17,17 +24,34 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     debug: bool = False
-    
+
+    # Auth0 Configuration
+    auth0_domain: Optional[str] = Field(default=None)
+    auth0_api_audience: Optional[str] = Field(default=None)
+    auth0_algorithms: List[str] = Field(default=["RS256"])
+    auth0_issuer: Optional[str] = Field(default=None)
+
+    # MongoDB Configuration
+    mongo_uri: str = Field(
+        default="mongodb://admin:password@mongodb:27017/?authSource=admin"
+    )
+    mongo_database_name: str = Field(default="study_planning")
+
+    # Role Configuration
+    admin_role: str = "admin"
+    student_role: str = "student"
+    allowed_roles: List[str] = ["admin", "student"]
+
     # Ollama Configuration
-    ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="llama2", env="OLLAMA_MODEL")
-    ollama_timeout: int = Field(default=180, env="OLLAMA_TIMEOUT")  # Timeout in seconds for LLM queries (default: 3 minutes)
-    
+    ollama_base_url: str = Field(default="http://localhost:11434")
+    ollama_model: str = Field(default="llama2")
+    ollama_timeout: int = Field(default=180)  # Timeout in seconds for LLM queries (default: 3 minutes)
+
     # File Storage Configuration
     upload_dir: str = "data/uploads"
     max_file_size: int = 50 * 1024 * 1024  # 50MB
     allowed_extensions: list[str] = [".pdf", ".txt", ".md", ".doc", ".docx", ".xls", ".xlsx"]
-    
+
     # RAG Configuration
     chromadb_path: str = "data/chroma_db"
     collection_name: str = "study_documents"
@@ -35,31 +59,64 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
     max_chunks_for_context: int = 5
-    
+
     # LLM Response Configuration
-    default_language: str = Field(default="auto", env="DEFAULT_LANGUAGE")  # "auto", "spanish", "english"
-    response_instructions: str = Field(default="", env="RESPONSE_INSTRUCTIONS")
-    max_context_length: int = Field(default=1500, env="MAX_CONTEXT_LENGTH")
-    
-    # CORS Configuration
-    cors_origins: list[str] = ["*"]
-    cors_methods: list[str] = ["*"]
-    cors_headers: list[str] = ["*"]
-    
+    default_language: str = Field(default="auto")  # "auto", "spanish", "english"
+    response_instructions: str = Field(default="")
+    max_context_length: int = Field(default=1500)
+
+    # CORS Configuration (accepts JSON array or comma-separated string)
+    cors_origins: Union[str, List[str]] = Field(
+        default=["http://localhost:3000", "http://localhost:8000"]
+    )
+    cors_methods: List[str] = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    cors_headers: List[str] = ["*"]
+
     # Logging Configuration
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Ensure directories exist
+
+    @field_validator("auth0_algorithms", mode="before")
+    @classmethod
+    def parse_auth0_algorithms(cls, v):
+        """Parse AUTH0_ALGORITHMS from string or list."""
+        if isinstance(v, str):
+            # Handle JSON-like string format: ["RS256"]
+            v = v.strip()
+            if v.startswith('[') and v.endswith(']'):
+                # Remove brackets and quotes, split by comma
+                v = v[1:-1].replace('"', '').replace("'", '').strip()
+                if v:
+                    return [alg.strip() for alg in v.split(',')]
+                return ["RS256"]
+            # Handle comma-separated format: RS256,HS256
+            return [alg.strip() for alg in v.split(',')]
+        return v
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS_ORIGINS from comma-separated string or list."""
+        if isinstance(v, str):
+            # Split by comma and strip whitespace
+            origins = [origin.strip() for origin in v.split(',') if origin.strip()]
+            return origins if origins else ["http://localhost:3000", "http://localhost:8000"]
+        elif isinstance(v, list):
+            return v
+        # Fallback to default
+        return ["http://localhost:3000", "http://localhost:8000"]
+
+    @model_validator(mode="after")
+    def create_directories_and_normalize(self):
+        """Ensure required directories exist and normalize fields."""
         Path(self.upload_dir).mkdir(parents=True, exist_ok=True)
         Path(self.chromadb_path).mkdir(parents=True, exist_ok=True)
+
+        # Ensure cors_origins is always a list
+        if isinstance(self.cors_origins, str):
+            self.cors_origins = [origin.strip() for origin in self.cors_origins.split(',') if origin.strip()]
+
+        return self
 
 
 # Global settings instance

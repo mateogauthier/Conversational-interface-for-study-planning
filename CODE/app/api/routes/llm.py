@@ -1,10 +1,11 @@
-"""LLM API routes."""
+"""LLM API routes with authentication."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 
-from app.api.dependencies import get_llm_service
+from app.api.dependencies import get_llm_service, get_current_user, get_current_admin
 from app.services.llm_service import LLMService
+from app.db.models import UserInDB
 from app.models.requests import LLMRequest
 from app.models.responses import LLMResponse, BaseResponse
 from app.core.exceptions import LLMException, LLMNotAvailableHTTPException
@@ -15,9 +16,10 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 @router.post("/query", response_model=LLMResponse)
 async def llm_query(
     request: LLMRequest,
+    current_user: UserInDB = Depends(get_current_user),
     llm_service: LLMService = Depends(get_llm_service)
 ):
-    """Direct LLM query without RAG."""
+    """Direct LLM query without RAG (authenticated users only)."""
     try:
         response = llm_service.generate_response(request.prompt, request.model)
         return LLMResponse(
@@ -35,9 +37,10 @@ async def llm_query(
 
 @router.get("/status")
 async def llm_status(
+    current_user: UserInDB = Depends(get_current_user),
     llm_service: LLMService = Depends(get_llm_service)
 ):
-    """Get LLM service status and information."""
+    """Get LLM service status and information (authenticated users only)."""
     try:
         service_info = llm_service.get_service_info()
         return service_info
@@ -51,9 +54,10 @@ async def llm_status(
 
 @router.get("/models")
 async def list_models(
+    current_user: UserInDB = Depends(get_current_user),
     llm_service: LLMService = Depends(get_llm_service)
 ):
-    """Get list of available LLM models."""
+    """Get list of available LLM models (authenticated users only)."""
     try:
         models = llm_service.get_available_models()
         return {
@@ -71,9 +75,10 @@ async def list_models(
 @router.post("/models/{model_name}/ensure")
 async def ensure_model(
     model_name: str,
+    admin: UserInDB = Depends(get_current_admin),
     llm_service: LLMService = Depends(get_llm_service)
 ):
-    """Ensure a specific model is available (pull if necessary)."""
+    """Ensure a specific model is available - admin only (pulls if necessary)."""
     try:
         success = llm_service.ensure_model(model_name)
         if success:
@@ -82,7 +87,7 @@ async def ensure_model(
             )
         else:
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail=f"Failed to ensure model '{model_name}' is available"
             )
     except LLMNotAvailableHTTPException:
@@ -93,9 +98,10 @@ async def ensure_model(
 
 @router.get("/health")
 async def llm_health_check(
+    current_user: UserInDB = Depends(get_current_user),
     llm_service: LLMService = Depends(get_llm_service)
 ):
-    """Health check for LLM service."""
+    """Health check for LLM service (authenticated users only)."""
     is_available = llm_service.is_available()
     return {
         "service": "LLM",

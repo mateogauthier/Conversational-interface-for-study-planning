@@ -33,6 +33,26 @@ class FileValidationException(StudyPlanningException):
     pass
 
 
+class AuthenticationException(StudyPlanningException):
+    """Exception raised when authentication fails."""
+    pass
+
+
+class AuthorizationException(StudyPlanningException):
+    """Exception raised when authorization fails (insufficient permissions)."""
+    pass
+
+
+class TokenExpiredException(AuthenticationException):
+    """Exception raised when JWT token has expired."""
+    pass
+
+
+class UserNotFoundException(StudyPlanningException):
+    """Exception raised when user is not found."""
+    pass
+
+
 # HTTP Exceptions
 class FileNotFoundHTTPException(HTTPException):
     """File not found HTTP exception."""
@@ -76,9 +96,41 @@ class RAGNotAvailableHTTPException(HTTPException):
 
 class LLMNotAvailableHTTPException(HTTPException):
     """LLM service not available HTTP exception."""
-    
+
     def __init__(self, reason: str = "LLM service unavailable"):
         super().__init__(
             status_code=503,
             detail=f"LLM service is not available: {reason}"
+        )
+
+
+class UnauthorizedHTTPException(HTTPException):
+    """Unauthorized HTTP exception (401)."""
+
+    def __init__(self, detail: str = "Could not validate credentials"):
+        super().__init__(
+            status_code=401,
+            detail=detail,
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+
+class ForbiddenHTTPException(HTTPException):
+    """Forbidden HTTP exception (403)."""
+
+    def __init__(self, detail: str = "Insufficient permissions"):
+        super().__init__(
+            status_code=403,
+            detail=detail
+        )
+
+
+class TokenExpiredHTTPException(HTTPException):
+    """Token expired HTTP exception (401)."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=401,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"}
         )

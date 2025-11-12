@@ -1,63 +1,87 @@
-"""RAG API routes."""
+"""RAG API routes with authentication."""
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import get_rag_service, get_llm_service
+from app.api.dependencies import (
+    get_rag_service,
+    get_llm_service,
+    get_current_user,
+    get_current_admin,
+    get_user_service_dep
+)
 from app.services.rag_service import RAGService
 from app.services.llm_service import LLMService
+from app.services.user_service import UserService
+from app.db.models import UserInDB
 from app.models.requests import RAGRequest, RAGLLMRequest
 from app.models.responses import (
-    RAGResponse, 
-    RAGLLMResponse, 
+    RAGResponse,
+    RAGLLMResponse,
     RAGStatsResponse,
     BaseResponse
 )
 from app.core.exceptions import (
-    RAGException, 
-    LLMException, 
+    RAGException,
+    LLMException,
     LLMNotAvailableHTTPException
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rag", tags=["rag"])
 
 
 @router.post("/search", response_model=RAGResponse)
 async def rag_search(
     request: RAGRequest,
+    current_user: UserInDB = Depends(get_current_user),
     rag_service: RAGService = Depends(get_rag_service),
-    llm_service: LLMService = Depends(get_llm_service)
+    llm_service: LLMService = Depends(get_llm_service),
+    user_service: UserService = Depends(get_user_service_dep)
 ):
-    """Query documents using RAG (Retrieval-Augmented Generation)."""
+    """
+    Query documents using RAG with user-based filtering.
+
+    - Students: Search their private files + all public files
+    - Admins: Search only public files
+    """
     try:
-        # Search documents
-        search_results = rag_service.search_documents(request.prompt, request.n_results)
-        
+        # Search documents with user permissions
+        search_results = rag_service.search_documents(
+            query=request.prompt,
+            user=current_user,
+            n_results=request.n_results
+        )
+
+        # Increment user query count
+        await user_service.increment_query_count(str(current_user.id))
+
         # If LLM completion is requested and context is available
         if request.use_llm and search_results.get("context") and llm_service.is_available():
             try:
                 llm_response = llm_service.generate_with_context(
-                    request.prompt, 
+                    request.prompt,
                     search_results["context"],
                     model=request.model,
                     language=request.language,
                     instructions=request.instructions
                 )
-                
+
                 return RAGLLMResponse(
                     message="RAG search with LLM completion successful",
                     query=request.prompt,
                     answer=llm_response["response"],
                     context_used=search_results["context"],
                     n_chunks_found=search_results["n_chunks_found"],
-                    sources=list(set([chunk.metadata.get('file_name', 'Unknown') 
+                    sources=list(set([chunk.metadata.get('file_name', 'Unknown')
                                     for chunk in search_results["relevant_chunks"]])),
                     relevant_chunks=search_results["relevant_chunks"],
                     model_used=llm_response.get("model_used")
                 )
-            except (LLMException, LLMNotAvailableHTTPException):
+            except (LLMException, LLMNotAvailableHTTPException) as e:
+                logger.warning(f"LLM failed, falling back to RAG-only: {e}")
                 # Fall back to RAG-only response if LLM fails
-                pass
-        
+
         # Return RAG-only response
         return RAGResponse(
             message="RAG search successful",
@@ -66,107 +90,140 @@ async def rag_search(
             n_chunks_found=search_results["n_chunks_found"],
             relevant_chunks=search_results["relevant_chunks"]
         )
-        
+
     except RAGException as e:
-        raise HTTPException(status_code=500, detail=str(e.message))
+        logger.error(f"RAG search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"RAG search failed: {str(e.message)}")
     except Exception as e:
+        logger.error(f"RAG search error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"RAG search failed: {str(e)}")
 
 
 @router.post("/query", response_model=RAGLLMResponse)
-async def rag_llm_query(
+async def rag_query(
     request: RAGLLMRequest,
+    current_user: UserInDB = Depends(get_current_user),
     rag_service: RAGService = Depends(get_rag_service),
-    llm_service: LLMService = Depends(get_llm_service)
+    llm_service: LLMService = Depends(get_llm_service),
+    user_service: UserService = Depends(get_user_service_dep)
 ):
-    """Query documents using RAG with LLM completion."""
+    """
+    Query documents and get LLM-generated answer with user-based filtering.
+
+    - Students: Query their private files + all public files
+    - Admins: Query only public files
+    """
     try:
-        # Search documents
-        search_results = rag_service.search_documents(request.prompt, request.n_results)
-        
-        if not search_results.get("context") or search_results.get("n_chunks_found", 0) == 0:
-            return RAGLLMResponse(
-                message="No relevant context found",
-                query=request.prompt,
-                answer="I couldn't find relevant information in the uploaded documents to answer your question.",
-                context_used="",
-                n_chunks_found=0,
-                sources=[],
-                relevant_chunks=[]
-            )
-        
-        # Generate LLM response with context
+        # Check if LLM is available
+        if not llm_service.is_available():
+            raise LLMNotAvailableHTTPException("LLM service is not available")
+
+        # Search documents with user permissions
+        search_results = rag_service.search_documents(
+            query=request.prompt,
+            user=current_user,
+            n_results=request.n_results
+        )
+
+        # Increment user query count
+        await user_service.increment_query_count(str(current_user.id))
+
+        # Generate answer with LLM
         llm_response = llm_service.generate_with_context(
-            request.prompt, 
+            request.prompt,
             search_results["context"],
             model=request.model,
             language=request.language,
             instructions=request.instructions
         )
-        
-        sources = list(set([chunk.metadata.get('file_name', 'Unknown') 
-                          for chunk in search_results["relevant_chunks"]]))
-        
+
         return RAGLLMResponse(
-            message="RAG query with LLM completion successful",
+            message="RAG query successful",
             query=request.prompt,
             answer=llm_response["response"],
             context_used=search_results["context"],
             n_chunks_found=search_results["n_chunks_found"],
-            sources=sources,
+            sources=list(set([chunk.metadata.get('file_name', 'Unknown')
+                            for chunk in search_results["relevant_chunks"]])),
             relevant_chunks=search_results["relevant_chunks"],
             model_used=llm_response.get("model_used")
         )
-        
-    except LLMNotAvailableHTTPException:
+
+    except (LLMException, LLMNotAvailableHTTPException):
         raise
-    except (RAGException, LLMException) as e:
-        raise HTTPException(status_code=500, detail=str(e.message))
+    except RAGException as e:
+        logger.error(f"RAG query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"RAG query failed: {str(e.message)}")
     except Exception as e:
+        logger.error(f"RAG query error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"RAG query failed: {str(e)}")
 
 
 @router.get("/stats", response_model=RAGStatsResponse)
-async def get_rag_stats(
+async def get_stats(
+    current_user: UserInDB = Depends(get_current_user),
     rag_service: RAGService = Depends(get_rag_service)
 ):
-    """Get RAG system statistics."""
+    """
+    Get RAG statistics based on user permissions.
+
+    - Students: Stats for their files + public files
+    - Admins: Stats for public files only
+    """
     try:
-        stats = rag_service.get_collection_stats()
+        stats = rag_service.get_user_stats(current_user)
         return stats
     except RAGException as e:
-        raise HTTPException(status_code=500, detail=str(e.message))
+        logger.error(f"Failed to get stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e.message)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting RAG stats: {str(e)}")
+        logger.error(f"Stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
 
 
 @router.post("/reset", response_model=BaseResponse)
-async def reset_rag_collection(
+async def reset_collection(
+    admin: UserInDB = Depends(get_current_admin),
     rag_service: RAGService = Depends(get_rag_service)
 ):
-    """Reset the RAG collection (delete all documents)."""
+    """
+    Reset public documents only (admin only).
+
+    This deletes all public RAG data but preserves student private files.
+    """
     try:
-        success = rag_service.reset_collection()
+        success = rag_service.reset_public_documents()
+
         if success:
             return BaseResponse(
-                message="RAG collection reset successfully"
+                message="Public RAG collection reset successfully"
             )
         else:
-            raise HTTPException(status_code=500, detail="Failed to reset RAG collection")
+            raise HTTPException(status_code=500, detail="Failed to reset collection")
+
     except RAGException as e:
-        raise HTTPException(status_code=500, detail=str(e.message))
+        logger.error(f"Failed to reset collection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset collection: {str(e.message)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error resetting RAG collection: {str(e)}")
+        logger.error(f"Reset error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset collection: {str(e)}")
 
 
 @router.get("/health")
-async def rag_health_check(
+async def health_check(
+    current_user: UserInDB = Depends(get_current_user),
     rag_service: RAGService = Depends(get_rag_service)
 ):
-    """Health check for RAG service."""
+    """Check if RAG service is available (authenticated users only)."""
     is_available = rag_service.is_available()
-    return {
-        "service": "RAG",
-        "status": "healthy" if is_available else "unavailable",
-        "is_available": is_available
-    }
+
+    if is_available:
+        return {
+            "status": "healthy",
+            "message": "RAG service is available"
+        }
+    else:
+        raise HTTPException(
+            status_code=503,
+            detail="RAG service is not available"
+        )
