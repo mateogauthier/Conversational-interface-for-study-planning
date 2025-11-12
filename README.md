@@ -31,6 +31,10 @@ A complete study planning system with a modern React frontend and FastAPI backen
 git clone https://github.com/yourusername/Conversational-interface-for-study-planning.git
 cd Conversational-interface-for-study-planning
 
+# Configure environment variables (first time only)
+cp .env.example .env
+# Edit .env with your Auth0 credentials and other settings
+
 # Start the application (development mode with hot-reload)
 docker compose up
 
@@ -290,6 +294,11 @@ docker compose down -v
 
 ```
 Conversational-interface-for-study-planning/
+├── .env                            # Your secrets (gitignored, create from .env.example)
+├── .env.example                    # Environment template (safe to commit)
+├── .gitignore                      # Git exclusions
+├── docker-compose.yml              # Development setup
+├── docker-compose.prod.yml         # Production setup
 ├── CODE/                           # Application source code
 │   ├── app/
 │   │   ├── main.py                # FastAPI entry point
@@ -322,13 +331,12 @@ Conversational-interface-for-study-planning/
 │   │   ├── test_rag.py            # API tests
 │   │   └── demo_rag.py            # Full demo
 │   ├── requirements.txt           # Python dependencies
+│   ├── .env.example               # Backend config template (for native dev)
 │   └── Dockerfile                 # Backend Docker build
 ├── FRONTEND/
 │   ├── src/                        # React source code
 │   ├── Dockerfile                 # Frontend Docker build
 │   └── nginx.conf                 # Nginx configuration
-├── docker-compose.yml              # Development setup
-├── docker-compose.prod.yml         # Production setup
 ├── .dockerignore                   # Docker build exclusions
 ├── DOCKER-QUICKSTART.md            # Docker detailed guide
 ├── TROUBLESHOOTING.md              # Common issues & solutions
@@ -397,26 +405,56 @@ Conversational-interface-for-study-planning/
 
 ### Environment Variables
 
-Set in `docker-compose.yml` (Docker) or `CODE/.env` (native):
+All configuration is managed through a **single `.env` file** at the project root. This file is automatically loaded by `docker-compose.yml`.
+
+**Setup (First Time):**
+```bash
+# Copy the example template
+cp .env.example .env
+
+# Edit with your values (especially Auth0 credentials)
+nano .env  # or use any text editor
+```
+
+**Important Variables:**
 
 ```bash
-# Ollama LLM Configuration
-OLLAMA_BASE_URL=http://ollama:11434    # Docker: service name
-OLLAMA_MODEL=llama2:latest             # Default model
+# ============================================
+# DATABASE
+# ============================================
+MONGO_ROOT_USERNAME=admin
+MONGO_ROOT_PASSWORD=password            # Change in production!
 
-# Application Settings
-UPLOAD_DIR=data/uploads                # Upload storage
-DEFAULT_LANGUAGE=auto                  # Response language (auto/english/spanish)
-RESPONSE_INSTRUCTIONS=                 # Custom LLM instructions
-MAX_CONTEXT_LENGTH=1500                # Max context chars for RAG
+# ============================================
+# AUTH0 CONFIGURATION
+# ============================================
+# Frontend (Public - embedded in JavaScript)
+VITE_AUTH0_DOMAIN=your-domain.auth0.com
+VITE_AUTH0_CLIENT_ID=your_frontend_client_id
+VITE_AUTH0_AUDIENCE=https://your-api-audience
+VITE_AUTH0_REDIRECT_URI=http://localhost:3000
 
-# Advanced (optional)
-CHROMADB_PATH=data/chroma_db           # Vector DB path
-COLLECTION_NAME=study_materials        # ChromaDB collection
-EMBEDDING_MODEL=all-MiniLM-L6-v2       # Sentence transformer model
-CHUNK_SIZE=500                         # Text chunk size
-CHUNK_OVERLAP=50                       # Chunk overlap
+# Backend (SENSITIVE - Never commit!)
+AUTH0_DOMAIN=your-domain.auth0.com
+AUTH0_API_AUDIENCE=https://your-api-audience
+AUTH0_CLIENT_ID=your_backend_client_id
+AUTH0_CLIENT_SECRET=your_secret_here    # NEVER commit this!
+
+# ============================================
+# OLLAMA & RAG CONFIGURATION
+# ============================================
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=llama2:latest
+DEFAULT_LANGUAGE=spanish                # auto/english/spanish
+MAX_CONTEXT_LENGTH=1500
+UPLOAD_DIR=data/uploads
 ```
+
+**Security Notes:**
+- The `.env` file is gitignored and will never be committed
+- `.env.example` is a safe template (no real secrets)
+- Only modify `.env` with your actual credentials
+- For production, use strong passwords and rotate secrets regularly
 
 ### Supported Models
 

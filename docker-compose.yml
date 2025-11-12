@@ -5,11 +5,11 @@ services:
       context: ./FRONTEND
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://localhost:8000
-        VITE_AUTH0_DOMAIN: dev-eex6fdnnmp2ps746.us.auth0.com
-        VITE_AUTH0_CLIENT_ID: WWACpUIWjEOo5tc0KtYANfT15G6rteCM
-        VITE_AUTH0_AUDIENCE: https://study-planning-api
-        VITE_AUTH0_REDIRECT_URI: http://localhost:3000
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_AUTH0_DOMAIN: ${VITE_AUTH0_DOMAIN}
+        VITE_AUTH0_CLIENT_ID: ${VITE_AUTH0_CLIENT_ID}
+        VITE_AUTH0_AUDIENCE: ${VITE_AUTH0_AUDIENCE}
+        VITE_AUTH0_REDIRECT_URI: ${VITE_AUTH0_REDIRECT_URI:-http://localhost:3000}
     container_name: study-planning-frontend
     ports:
       - "3000:80"
@@ -32,8 +32,8 @@ services:
     ports:
       - "27017:27017"  # Exposed for development access
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password}
     volumes:
       - mongo-data:/data/db
     networks:
@@ -55,13 +55,24 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # MongoDB Configuration (override defaults)
-      - MONGO_URI=mongodb://admin:password@mongodb:27017/?authSource=admin
-      - MONGO_DATABASE_NAME=study_planning
-      # Ollama Configuration (override defaults)
-      - OLLAMA_BASE_URL=http://ollama:11434
-      # CORS Configuration (override defaults)
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
+      # MongoDB Configuration
+      - MONGO_URI=mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-password}@mongodb:27017/?authSource=admin
+      - MONGO_DATABASE_NAME=${MONGO_DATABASE_NAME:-study_planning}
+      # Ollama Configuration
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama2:latest}
+      # CORS Configuration
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      # Auth0 Backend Configuration
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_API_AUDIENCE=${AUTH0_API_AUDIENCE}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      # RAG & LLM Configuration
+      - DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-spanish}
+      - RESPONSE_INSTRUCTIONS=${RESPONSE_INSTRUCTIONS:-}
+      - MAX_CONTEXT_LENGTH=${MAX_CONTEXT_LENGTH:-1500}
+      - UPLOAD_DIR=${UPLOAD_DIR:-data/uploads}
     volumes:
       # Bind mount source code for hot-reload (DEVELOPMENT ONLY)
       - ./CODE:/app
