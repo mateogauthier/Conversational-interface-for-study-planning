@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.models import SecuritySchemeType, HTTPBearer
 import logging
 
 from app.core.config import get_settings
@@ -18,13 +19,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Create FastAPI app
+# Create FastAPI app with security scheme
 app = FastAPI(
     title=settings.api_title,
     description=settings.api_description,
     version=settings.api_version,
-    debug=settings.debug
+    debug=settings.debug,
+    swagger_ui_parameters={
+        "persistAuthorization": True,  # Keep authorization between page refreshes
+    }
 )
+
+# Add security scheme to OpenAPI schema
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    from fastapi.openapi.utils import get_openapi
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    # Add security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "HTTPBearer": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter your Auth0 JWT token"
+        }
+    }
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 
 @app.on_event("startup")

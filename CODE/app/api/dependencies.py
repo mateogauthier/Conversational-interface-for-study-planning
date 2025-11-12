@@ -3,6 +3,7 @@
 import logging
 from typing import Optional
 from fastapi import Depends, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.services.file_service import FileService, get_file_service_instance
@@ -23,6 +24,9 @@ from app.db.database import get_database
 from app.db.models import UserInDB
 
 logger = logging.getLogger(__name__)
+
+# Security scheme for Swagger UI
+security = HTTPBearer()
 
 
 async def get_file_service(
@@ -62,14 +66,14 @@ async def get_user_service_dep(
 
 
 async def get_current_user(
-    authorization: Optional[str] = Header(None),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     auth_service: AuthService = Depends(get_auth_service_dep)
 ) -> UserInDB:
     """
     Dependency to get current authenticated user from JWT token.
 
     Args:
-        authorization: Authorization header with Bearer token
+        credentials: HTTP Bearer credentials from Swagger/API
         auth_service: Auth service instance
 
     Returns:
@@ -79,18 +83,11 @@ async def get_current_user(
         UnauthorizedHTTPException: If token is missing or invalid
         TokenExpiredHTTPException: If token has expired
     """
-    if not authorization:
-        logger.warning("Missing Authorization header")
+    if not credentials:
+        logger.warning("Missing Authorization credentials")
         raise UnauthorizedHTTPException("Missing Authorization header")
 
-    # Extract Bearer token
-    parts = authorization.split()
-
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        logger.warning(f"Invalid Authorization header format: {authorization[:20]}...")
-        raise UnauthorizedHTTPException("Invalid Authorization header format. Expected: Bearer <token>")
-
-    token = parts[1]
+    token = credentials.credentials
 
     try:
         # Authenticate token

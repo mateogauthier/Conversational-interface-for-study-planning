@@ -80,8 +80,16 @@ class AuthService:
         if not auth0_id:
             raise AuthenticationException("Token missing 'sub' claim")
 
+        # For machine-to-machine tokens (client credentials), generate a synthetic email
         if not email:
-            raise AuthenticationException("Token missing 'email' claim")
+            if auth0_id.endswith("@clients"):
+                # Extract client ID from subject (format: CLIENT_ID@clients)
+                client_id = auth0_id.replace("@clients", "")
+                email = f"{client_id}@m2m.example.com"
+                name = name or f"M2M Client {client_id[:8]}"
+                logger.info(f"Machine-to-machine token detected. Using synthetic email: {email}")
+            else:
+                raise AuthenticationException("Token missing 'email' claim")
 
         if not role:
             raise AuthenticationException("User role not determined")
