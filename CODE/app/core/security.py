@@ -209,10 +209,12 @@ def extract_user_role(payload: Dict) -> str:
         logger.info(f"Machine-to-machine token detected for client {subject}. Assigning default 'admin' role for testing.")
         return settings.admin_role  # Default to admin for M2M tokens
 
-    logger.error(f"No valid role found in token payload for user {payload.get('sub')}")
-    raise AuthorizationException(
-        f"User does not have a valid role. Allowed roles: {settings.allowed_roles}"
-    )
+    # Strategy 5: Default role for authenticated users (when roles not in token)
+    # Users without an explicit role are treated as students
+    # To make a user an admin, assign the 'admin' role in Auth0 Dashboard
+    logger.info(f"No role found in token payload for user {subject}. Assigning default 'student' role. "
+                f"To grant admin access, assign the 'admin' role in Auth0 User Management.")
+    return settings.student_role  # Default to student for authenticated users without explicit roles
 
 
 def check_role_permission(user_role: str, required_role: str) -> bool:

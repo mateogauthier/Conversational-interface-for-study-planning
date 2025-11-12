@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Files, Trash2, RefreshCw, File, CheckCircle, XCircle, Upload, AlertCircle } from 'lucide-react';
+import { Files, Trash2, RefreshCw, File, CheckCircle, XCircle, Upload, AlertCircle, Loader } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { fileApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 function FilesPage() {
   const { t } = useTranslation();
+  const { isLoading: authLoading, accessToken } = useAuth();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
@@ -19,17 +21,21 @@ function FilesPage() {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Wait for authentication to complete before loading data
   useEffect(() => {
-    loadFiles();
-    loadSupportedExtensions();
-  }, []);
+    if (!authLoading && accessToken) {
+      loadFiles();
+      loadSupportedExtensions();
+    }
+  }, [authLoading, accessToken]);
 
   const loadFiles = async () => {
     try {
       setLoading(true);
       setMessage(null);
       const response = await fileApi.list();
-      setFiles(response.files || []);
+      // API returns array directly, not {files: [...]}
+      setFiles(response || []);
     } catch (error) {
       setMessage({
         type: 'error',
@@ -148,9 +154,27 @@ function FilesPage() {
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
-  const formatDate = (timestamp) => {
-    return new Date(timestamp * 1000).toLocaleString();
+  const formatDate = (dateString) => {
+    // API returns ISO datetime string, not Unix timestamp
+    return new Date(dateString).toLocaleString();
   };
+
+  // Show loading screen while authentication is in progress
+  if (authLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '60vh',
+        gap: '1rem'
+      }}>
+        <Loader size={48} className="spinner-icon" style={{ animation: 'spin 1s linear infinite' }} />
+        <p style={{ color: '#a0aec0', fontSize: '1.1rem' }}>{t('auth.loading')}</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -311,11 +335,11 @@ function FilesPage() {
                       {file.filename}
                     </div>
                     <div className="file-meta">
-                      {file.file_type} • {formatFileSize(file.size_bytes)} •
-                      {t('files.uploaded')}: {formatDate(file.created_at)}
+                      {formatFileSize(file.file_size)} • {file.chunk_count} {file.chunk_count === 1 ? 'chunk' : 'chunks'} •
+                      {t('files.uploaded')}: {formatDate(file.uploaded_at)}
                     </div>
-                    {!file.is_supported && (
-                      <div style={{ marginTop: '0.25rem', color: '#f56565', fontSize: '0.875rem' }}>
+                    {file.chunk_count === 0 && (
+                      <div style={{ marginTop: '0.25rem', color: '#f59e0b', fontSize: '0.875rem' }}>
                         ⚠ {t('files.unsupported')}
                       </div>
                     )}

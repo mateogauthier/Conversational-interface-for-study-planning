@@ -73,14 +73,26 @@ class AuthService:
             AuthenticationException: If user data is invalid
         """
         auth0_id = token_payload.get("sub")
-        email = token_payload.get("email")
-        name = token_payload.get("name")
+
+        # DEBUG: Log all token claims to see what's available
+        logger.info(f"Token payload keys for user {auth0_id}: {list(token_payload.keys())}")
+        logger.info(f"Checking for email in: 'email', 'https://study-planning-api/email'")
+        logger.info(f"Checking for name in: 'name', 'https://study-planning-api/name'")
+
+        # Try to get email from standard claim first, then namespaced claim
+        email = token_payload.get("email") or token_payload.get("https://study-planning-api/email")
+        logger.info(f"Email extracted: {email}")
+
+        # Try to get name from standard claim first, then namespaced claim
+        name = token_payload.get("name") or token_payload.get("https://study-planning-api/name")
+        logger.info(f"Name extracted: {name}")
+
         role = token_payload.get("role")
 
         if not auth0_id:
             raise AuthenticationException("Token missing 'sub' claim")
 
-        # For machine-to-machine tokens (client credentials), generate a synthetic email
+        # Generate email if not present in token (access tokens may not include email)
         if not email:
             if auth0_id.endswith("@clients"):
                 # Extract client ID from subject (format: CLIENT_ID@clients)
@@ -89,7 +101,11 @@ class AuthService:
                 name = name or f"M2M Client {client_id[:8]}"
                 logger.info(f"Machine-to-machine token detected. Using synthetic email: {email}")
             else:
-                raise AuthenticationException("Token missing 'email' claim")
+                # For regular users, generate email from auth0_id
+                # Using example.com (reserved for documentation/examples per RFC 2606)
+                # Email will be synced from Auth0 profile on first login or profile update
+                email = f"{auth0_id.replace('|', '-')}@users.example.com"
+                logger.info(f"Email not in token for user {auth0_id}. Using synthetic email: {email}")
 
         if not role:
             raise AuthenticationException("User role not determined")

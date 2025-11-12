@@ -4,6 +4,12 @@ services:
     build:
       context: ./FRONTEND
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_AUTH0_DOMAIN: dev-eex6fdnnmp2ps746.us.auth0.com
+        VITE_AUTH0_CLIENT_ID: WWACpUIWjEOo5tc0KtYANfT15G6rteCM
+        VITE_AUTH0_AUDIENCE: https://study-planning-api
+        VITE_AUTH0_REDIRECT_URI: http://localhost:3000
     container_name: study-planning-frontend
     ports:
       - "3000:80"
@@ -49,22 +55,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Auth0 Configuration (REQUIRED - set in .env file)
-      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
-      - AUTH0_API_AUDIENCE=${AUTH0_API_AUDIENCE}
-      - AUTH0_ALGORITHMS=["RS256"]
-      # MongoDB Configuration
+      # MongoDB Configuration (override defaults)
       - MONGO_URI=mongodb://admin:password@mongodb:27017/?authSource=admin
       - MONGO_DATABASE_NAME=study_planning
-      # Ollama Configuration
+      # Ollama Configuration (override defaults)
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama2:latest
-      # App Configuration
-      - UPLOAD_DIR=data/uploads
-      - DEFAULT_LANGUAGE=auto
-      - RESPONSE_INSTRUCTIONS=
-      - MAX_CONTEXT_LENGTH=1500
-      # CORS Configuration
+      # CORS Configuration (override defaults)
       - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
     volumes:
       # Bind mount source code for hot-reload (DEVELOPMENT ONLY)

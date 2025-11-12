@@ -14,6 +14,21 @@ const resources = {
         settings: 'Settings'
       },
 
+      // Authentication
+      auth: {
+        welcome: 'Welcome to Study Planning Assistant',
+        subtitle: 'Your intelligent companion for study materials and planning',
+        features: 'Features',
+        feature1: 'Upload and organize your study documents',
+        feature2: 'Ask questions powered by AI',
+        feature3: 'Get personalized learning assistance',
+        loginButton: 'Sign In with Auth0',
+        securedBy: 'Secured by',
+        loading: 'Loading...',
+        checking: 'Checking authentication...',
+        logout: 'Logout'
+      },
+
       // Home Page
       home: {
         title: 'Ask Questions About Your Documents',
@@ -119,6 +134,21 @@ const resources = {
         home: 'Inicio',
         files: 'Archivos',
         settings: 'Configuración'
+      },
+
+      // Authentication
+      auth: {
+        welcome: 'Bienvenido al Asistente de Planificación de Estudios',
+        subtitle: 'Tu compañero inteligente para materiales de estudio y planificación',
+        features: 'Características',
+        feature1: 'Sube y organiza tus documentos de estudio',
+        feature2: 'Haz preguntas con la ayuda de IA',
+        feature3: 'Obtén asistencia de aprendizaje personalizada',
+        loginButton: 'Iniciar Sesión con Auth0',
+        securedBy: 'Protegido por',
+        loading: 'Cargando...',
+        checking: 'Verificando autenticación...',
+        logout: 'Cerrar Sesión'
       },
 
       // Home Page

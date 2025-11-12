@@ -34,7 +34,7 @@ class FileService:
         self.allowed_extensions = {ext.lower(): self._get_file_type_description(ext)
                                   for ext in settings.allowed_extensions}
         self.database = database
-        self.files_collection = database[FILE_METADATA_COLLECTION] if database else None
+        self.files_collection = database[FILE_METADATA_COLLECTION] if database is not None else None
 
         # Ensure upload directory exists
         Path(self.upload_dir).mkdir(parents=True, exist_ok=True)
@@ -128,7 +128,7 @@ class FileService:
             )
 
             # Store in MongoDB
-            if self.files_collection:
+            if self.files_collection is not None:
                 await self.files_collection.insert_one(
                     file_metadata.model_dump(by_alias=True, exclude={"id"})
                 )
@@ -171,7 +171,7 @@ class FileService:
             List of FileMetadataInDB documents
         """
         try:
-            if not self.files_collection:
+            if self.files_collection is None:
                 return []
 
             # Build query based on role
@@ -253,7 +253,7 @@ class FileService:
         """
         try:
             # Get file metadata from MongoDB
-            if not self.files_collection:
+            if self.files_collection is None:
                 raise FileProcessingException("Database not available")
 
             file_metadata = await self.files_collection.find_one({"filename": filename})
@@ -300,7 +300,7 @@ class FileService:
         Returns:
             FileMetadataInDB or None if not found
         """
-        if not self.files_collection:
+        if self.files_collection is None:
             return None
 
         file_doc = await self.files_collection.find_one({"filename": filename})
@@ -351,7 +351,7 @@ class FileService:
             processed: Whether file has been processed
             chunk_count: Number of chunks generated
         """
-        if not self.files_collection:
+        if self.files_collection is None:
             return
 
         await self.files_collection.update_one(
@@ -385,7 +385,7 @@ def get_file_service_instance(database: Optional[AsyncIOMotorDatabase] = None) -
     """
     global file_service
 
-    if file_service is None:
+    if file_service is None or (database is not None and file_service.database is None):
         file_service = FileService(database)
 
     return file_service

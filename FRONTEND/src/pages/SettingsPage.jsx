@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Settings, Globe, CheckCircle, Cpu } from 'lucide-react';
+import { Settings, Globe, CheckCircle, Cpu, Loader } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { llmApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 function SettingsPage() {
   const { t, i18n } = useTranslation();
+  const { isLoading: authLoading, accessToken } = useAuth();
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
@@ -20,9 +22,12 @@ function SettingsPage() {
     localStorage.getItem('preferredChunks') || '5'
   );
 
+  // Wait for authentication to complete before loading data
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (!authLoading && accessToken) {
+      loadSettings();
+    }
+  }, [authLoading, accessToken]);
 
   const loadSettings = async () => {
     try {
@@ -65,6 +70,23 @@ function SettingsPage() {
     localStorage.setItem('preferredChunks', newChunks);
     setMessage({ type: 'success', text: t('settings.chunksSaved') });
   };
+
+  // Show loading screen while authentication is in progress
+  if (authLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '60vh',
+        gap: '1rem'
+      }}>
+        <Loader size={48} className="spinner-icon" style={{ animation: 'spin 1s linear infinite' }} />
+        <p style={{ color: '#a0aec0', fontSize: '1.1rem' }}>{t('auth.loading')}</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return <div className="spinner"></div>;

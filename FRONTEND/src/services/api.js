@@ -9,6 +9,43 @@ const api = axios.create({
   },
 });
 
+// Token management
+let accessToken = null;
+
+export const setAccessToken = (token) => {
+  accessToken = token;
+};
+
+export const getAccessToken = () => {
+  return accessToken;
+};
+
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for handling auth errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid - clear it and redirect to login
+      accessToken = null;
+      window.location.href = '/';
+    }
+    return Promise.reject(error);
+  }
+);
+
 // File Management API
 export const fileApi = {
   // Upload a file
