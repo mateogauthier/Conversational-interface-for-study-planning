@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Settings, Globe, CheckCircle, Cpu, Loader } from 'lucide-react';
+import { Settings, Globe, CheckCircle, Cpu, Loader, Download, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { llmApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
 
 function SettingsPage() {
   const { t, i18n } = useTranslation();
@@ -10,6 +11,12 @@ function SettingsPage() {
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+
+  // Model pulling state
+  const [newModelName, setNewModelName] = useState('');
+  const [pullingModel, setPullingModel] = useState(false);
+  const [showAddModel, setShowAddModel] = useState(false);
 
   // User preferences
   const [language, setLanguage] = useState(
@@ -35,6 +42,11 @@ function SettingsPage() {
   const loadSettings = async () => {
     try {
       setLoading(true);
+
+      // Load user profile to get role
+      const profileRes = await api.get('/users/me');
+      setUserProfile(profileRes.data);
+
       const modelsRes = await llmApi.listModels().catch(() => ({ models: [] }));
       setModels(modelsRes.models || []);
 
@@ -79,6 +91,31 @@ function SettingsPage() {
     setUseRAG(newValue);
     localStorage.setItem('useRAG', newValue.toString());
     setMessage({ type: 'success', text: t('settings.ragSaved') });
+  };
+
+  const handlePullModel = async (e) => {
+    e.preventDefault();
+    if (!newModelName.trim() || pullingModel) return;
+
+    setPullingModel(true);
+    setMessage(null);
+
+    try {
+      await llmApi.ensureModel(newModelName.trim());
+      setMessage({ type: 'success', text: t('settings.modelPullSuccess', { model: newModelName }) });
+      setNewModelName('');
+      setShowAddModel(false);
+
+      // Reload models list
+      const modelsRes = await llmApi.listModels().catch(() => ({ models: [] }));
+      setModels(modelsRes.models || []);
+    } catch (error) {
+      console.error('Failed to pull model:', error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Unknown error';
+      setMessage({ type: 'error', text: t('settings.modelPullError', { error: errorMsg }) });
+    } finally {
+      setPullingModel(false);
+    }
   };
 
   // Show loading screen while authentication is in progress
@@ -188,14 +225,72 @@ function SettingsPage() {
 
           {/* Available Models Section */}
           <section>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.25rem' }}>
-              <Cpu size={24} />
-              {t('settings.preferredModel')}
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.25rem' }}>
+                <Cpu size={24} />
+                {t('settings.preferredModel')}
+              </h3>
+              {userProfile?.role === 'admin' && (
+                <button
+                  onClick={() => setShowAddModel(!showAddModel)}
+                  className="btn btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+                >
+                  <Plus size={18} />
+                  {t('settings.addModel')}
+                </button>
+              )}
+            </div>
 
             <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#718096' }}>
               {t('settings.preferredModelHint')}
             </p>
+
+            {/* Add Model Form */}
+            {showAddModel && userProfile?.role === 'admin' && (
+              <div style={{ backgroundColor: '#f7fafc', padding: '1.5rem', borderRadius: '8px', marginBottom: '1rem', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 600 }}>
+                  {t('settings.pullNewModel')}
+                </h4>
+                <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#718096' }}>
+                  {t('settings.pullModelHint')}
+                </p>
+                <form onSubmit={handlePullModel} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <input
+                      type="text"
+                      className="input"
+                      value={newModelName}
+                      onChange={(e) => setNewModelName(e.target.value)}
+                      placeholder={t('settings.modelNamePlaceholder')}
+                      disabled={pullingModel}
+                      style={{ width: '100%' }}
+                    />
+                    <p style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#718096' }}>
+                      {t('settings.modelNameExample')}
+                    </p>
+                  </div>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={!newModelName.trim() || pullingModel}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '120px', justifyContent: 'center' }}
+                  >
+                    {pullingModel ? (
+                      <>
+                        <Loader size={18} className="spinner-icon" style={{ animation: 'spin 1s linear infinite' }} />
+                        {t('settings.pulling')}
+                      </>
+                    ) : (
+                      <>
+                        <Download size={18} />
+                        {t('settings.pullModel')}
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+            )}
 
             {models.length === 0 ? (
               <p style={{ color: '#718096', fontStyle: 'italic' }}>{t('settings.noModels')}</p>
