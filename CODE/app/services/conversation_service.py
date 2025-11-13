@@ -106,6 +106,7 @@ class ConversationService:
         role: str,
         content: str,
         model_used: Optional[str] = None,
+        source_files: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> str:
         """
@@ -116,6 +117,7 @@ class ConversationService:
             role: "user" or "assistant"
             content: Message content
             model_used: LLM model name (for assistant messages)
+            source_files: List of source file names (for assistant messages)
             metadata: Optional metadata (sources, token count, etc.)
 
         Returns:
@@ -127,6 +129,7 @@ class ConversationService:
             content=content,
             timestamp=datetime.utcnow(),
             model_used=model_used,
+            source_files=source_files or [],
             metadata=metadata or {}
         )
 
@@ -345,6 +348,100 @@ class ConversationService:
             return str(conversation["_id"])
 
         return None
+
+    async def get_message(self, message_id: str) -> Optional[MessageInDB]:
+        """
+        Get a specific message by ID.
+
+        Args:
+            message_id: Message ID
+
+        Returns:
+            MessageInDB object or None if not found
+        """
+        message_doc = await self.messages_collection.find_one(
+            {"_id": ObjectId(message_id)}
+        )
+
+        if not message_doc:
+            return None
+
+        # Convert _id to string for Pydantic model
+        message_doc["_id"] = str(message_doc["_id"])
+
+        return MessageInDB(**message_doc)
+
+    async def get_conversation_info(self, conversation_id: str) -> Optional[ConversationInDB]:
+        """
+        Get conversation information by ID.
+
+        Args:
+            conversation_id: Conversation ID
+
+        Returns:
+            ConversationInDB object or None if not found
+        """
+        conv_doc = await self.conversations_collection.find_one(
+            {"_id": ObjectId(conversation_id)}
+        )
+
+        if not conv_doc:
+            return None
+
+        # Convert _id to string for Pydantic model
+        conv_doc["_id"] = str(conv_doc["_id"])
+
+        return ConversationInDB(**conv_doc)
+
+    async def update_message_feedback(
+        self,
+        message_id: str,
+        feedback: str
+    ) -> None:
+        """
+        Update feedback for a message.
+
+        Args:
+            message_id: Message ID
+            feedback: Feedback value ('like' or 'dislike')
+        """
+        await self.messages_collection.update_one(
+            {"_id": ObjectId(message_id)},
+            {"$set": {"feedback": feedback}}
+        )
+
+        logger.debug(f"Updated feedback for message {message_id} to '{feedback}'")
+
+    async def get_files_used_in_conversation(
+        self,
+        conversation_id: str
+    ) -> List[str]:
+        """
+        Get list of all unique files that have been used in this conversation.
+
+        Args:
+            conversation_id: Conversation ID
+
+        Returns:
+            List of unique filenames used in the conversation
+        """
+        # Get all assistant messages in this conversation (only they have source_files)
+        messages_cursor = self.messages_collection.find(
+            {
+                "conversation_id": conversation_id,
+                "role": "assistant"
+            }
+        )
+
+        messages = await messages_cursor.to_list(length=None)
+
+        # Collect all unique filenames
+        all_files = set()
+        for msg in messages:
+            source_files = msg.get("source_files", [])
+            all_files.update(source_files)
+
+        return list(all_files)
 
 
 # Global service instance (will be initialized with database in main.py)

@@ -35,3 +35,9 @@ class FileDeleteRequest(BaseModel):
 class ModelInstallRequest(BaseModel):
     """Request model for installing LLM models."""
     model_name: str = Field(..., description="Name of the model to install")
+
+
+class MessageFeedbackRequest(BaseModel):
+    """Request model for submitting feedback on a message."""
+    message_id: str = Field(..., description="ID of the message to provide feedback for")
+    feedback: str = Field(..., description="Feedback type: 'like' or 'dislike'")

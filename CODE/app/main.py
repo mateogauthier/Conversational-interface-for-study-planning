@@ -6,7 +6,7 @@ from fastapi.openapi.models import SecuritySchemeType, HTTPBearer
 import logging
 
 from app.core.config import get_settings
-from app.api.routes import files, llm, rag, users, admin, conversations
+from app.api.routes import files, llm, rag, users, admin, conversations, feedback
 from app.models.responses import APIInfoResponse, HealthResponse
 from app.db.database import mongodb
 from app.services import conversation_service as conv_service_module
@@ -107,6 +107,7 @@ app.include_router(rag.router)
 app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(conversations.router)
+app.include_router(feedback.router)
 
 
 @app.get("/", response_model=APIInfoResponse)

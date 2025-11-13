@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Files, Trash2, RefreshCw, File, CheckCircle, XCircle, Upload, AlertCircle, Loader } from 'lucide-react';
+import { Files, Trash2, RefreshCw, File, CheckCircle, XCircle, Upload, AlertCircle, Loader, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { fileApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
 
 function FilesPage() {
   const { t } = useTranslation();
@@ -11,6 +12,12 @@ function FilesPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+
+  // Tab and pagination state
+  const [activeTab, setActiveTab] = useState('public'); // 'public' or 'private'
+  const [currentPage, setCurrentPage] = useState(1);
+  const filesPerPage = 10;
 
   // Upload state
   const [selectedFile, setSelectedFile] = useState(null);
@@ -33,6 +40,11 @@ function FilesPage() {
     try {
       setLoading(true);
       setMessage(null);
+
+      // Load user profile to get user ID and role
+      const profileRes = await api.get('/users/me');
+      setUserProfile(profileRes.data);
+
       const response = await fileApi.list();
       // API returns array directly, not {files: [...]}
       setFiles(response || []);
@@ -157,6 +169,36 @@ function FilesPage() {
   const formatDate = (dateString) => {
     // API returns ISO datetime string, not Unix timestamp
     return new Date(dateString).toLocaleString();
+  };
+
+  // Check if user can delete a file
+  const canDeleteFile = (file) => {
+    if (!userProfile) return false;
+    // Admins can delete any public file
+    if (userProfile.role === 'admin') return file.is_public;
+    // Students can only delete their own files
+    return file.user_id === userProfile.id;
+  };
+
+  // Filter files based on active tab
+  const filteredFiles = files.filter(file => {
+    if (activeTab === 'public') {
+      return file.is_public === true;
+    } else {
+      return file.is_public === false;
+    }
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredFiles.length / filesPerPage);
+  const startIndex = (currentPage - 1) * filesPerPage;
+  const endIndex = startIndex + filesPerPage;
+  const paginatedFiles = filteredFiles.slice(startIndex, endIndex);
+
+  // Reset to page 1 when changing tabs
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setCurrentPage(1);
   };
 
   // Show loading screen while authentication is in progress
@@ -308,9 +350,47 @@ function FilesPage() {
           </div>
         )}
 
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '2px solid #e2e8f0' }}>
+          <button
+            onClick={() => handleTabChange('public')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'public' ? '3px solid #667eea' : '3px solid transparent',
+              color: activeTab === 'public' ? '#667eea' : '#718096',
+              fontWeight: activeTab === 'public' ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              marginBottom: '-2px',
+            }}
+          >
+            {t('files.publicFiles')}
+          </button>
+          {userProfile?.role !== 'admin' && (
+            <button
+              onClick={() => handleTabChange('private')}
+              style={{
+                padding: '0.75rem 1.5rem',
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === 'private' ? '3px solid #667eea' : '3px solid transparent',
+                color: activeTab === 'private' ? '#667eea' : '#718096',
+                fontWeight: activeTab === 'private' ? 600 : 400,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                marginBottom: '-2px',
+              }}
+            >
+              {t('files.privateFiles')}
+            </button>
+          )}
+        </div>
+
         {loading ? (
           <div className="spinner"></div>
-        ) : files.length === 0 ? (
+        ) : filteredFiles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#a0aec0' }}>
             <File size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
             <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>
@@ -322,12 +402,17 @@ function FilesPage() {
           </div>
         ) : (
           <>
-            <div style={{ marginBottom: '1rem', color: '#718096' }}>
-              {t('files.totalFiles')}: {files.length}
+            <div style={{ marginBottom: '1rem', color: '#718096', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>
+                {t('files.showing')} {startIndex + 1}-{Math.min(endIndex, filteredFiles.length)} {t('files.of')} {filteredFiles.length}
+              </span>
+              <span style={{ fontSize: '0.9rem' }}>
+                {t('files.totalFiles')}: {files.length} ({files.filter(f => f.is_public).length} {t('files.public')}, {files.filter(f => !f.is_public).length} {t('files.private')})
+              </span>
             </div>
 
             <div className="file-list">
-              {files.map((file) => (
+              {paginatedFiles.map((file) => (
                 <div key={file.filename} className="file-item">
                   <div className="file-info">
                     <div className="file-name">
@@ -338,6 +423,19 @@ function FilesPage() {
                       {formatFileSize(file.file_size)} • {file.chunk_count} {file.chunk_count === 1 ? 'chunk' : 'chunks'} •
                       {t('files.uploaded')}: {formatDate(file.uploaded_at)}
                     </div>
+                    {file.feedback_stats && (
+                      <div style={{ marginTop: '0.5rem', display: 'flex', gap: '1rem', fontSize: '0.875rem', color: '#718096' }}>
+                        <span title="Times used in conversations">
+                          📊 Used: {file.feedback_stats.total_uses}
+                        </span>
+                        <span title="Likes received" style={{ color: '#48bb78' }}>
+                          👍 {file.feedback_stats.total_likes}
+                        </span>
+                        <span title="Dislikes received" style={{ color: '#f56565' }}>
+                          👎 {file.feedback_stats.total_dislikes}
+                        </span>
+                      </div>
+                    )}
                     {file.chunk_count === 0 && (
                       <div style={{ marginTop: '0.25rem', color: '#f59e0b', fontSize: '0.875rem' }}>
                         ⚠ {t('files.unsupported')}
@@ -346,25 +444,56 @@ function FilesPage() {
                   </div>
 
                   <div className="file-actions">
-                    <button
-                      onClick={() => handleDelete(file.filename)}
-                      className="btn btn-danger"
-                      disabled={deleting === file.filename}
-                      style={{ padding: '0.5rem 1rem' }}
-                    >
-                      {deleting === file.filename ? (
-                        <>{t('files.deleting')}</>
-                      ) : (
-                        <>
-                          <Trash2 size={16} />
-                          {t('files.delete')}
-                        </>
-                      )}
-                    </button>
+                    {canDeleteFile(file) && (
+                      <button
+                        onClick={() => handleDelete(file.filename)}
+                        className="btn btn-danger"
+                        disabled={deleting === file.filename}
+                        style={{ padding: '0.5rem 1rem' }}
+                      >
+                        {deleting === file.filename ? (
+                          <>{t('files.deleting')}</>
+                        ) : (
+                          <>
+                            <Trash2 size={16} />
+                            {t('files.delete')}
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.5rem 1rem' }}
+                >
+                  <ChevronLeft size={18} />
+                  {t('files.previous')}
+                </button>
+
+                <span style={{ color: '#718096', fontSize: '0.9rem' }}>
+                  {t('files.page')} {currentPage} {t('files.of')} {totalPages}
+                </span>
+
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.5rem 1rem' }}
+                >
+                  {t('files.next')}
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

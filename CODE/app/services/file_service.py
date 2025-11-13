@@ -368,6 +368,82 @@ class FileService:
         """Get supported file extensions and their descriptions."""
         return self.allowed_extensions.copy()
 
+    async def track_file_usage(self, filename: str) -> None:
+        """
+        Track that a file was used in a conversation.
+        Increments total_uses and updates last_used timestamp.
+
+        Args:
+            filename: Name of file to track
+        """
+        if self.files_collection is None:
+            logger.warning("Database not available, cannot track file usage")
+            return
+
+        try:
+            await self.files_collection.update_one(
+                {"filename": filename},
+                {
+                    "$inc": {"feedback_stats.total_uses": 1},
+                    "$set": {"feedback_stats.last_used": datetime.utcnow()}
+                }
+            )
+            logger.debug(f"Tracked usage for file: {filename}")
+        except Exception as e:
+            logger.error(f"Error tracking file usage for {filename}: {str(e)}")
+
+    async def update_file_feedback(
+        self,
+        filename: str,
+        new_feedback: str,
+        previous_feedback: Optional[str] = None
+    ) -> None:
+        """
+        Update file feedback statistics.
+        Handles incrementing/decrementing likes/dislikes when feedback changes.
+
+        Args:
+            filename: Name of file
+            new_feedback: New feedback value ('like' or 'dislike')
+            previous_feedback: Previous feedback value (if any)
+        """
+        if self.files_collection is None:
+            logger.warning("Database not available, cannot update file feedback")
+            return
+
+        try:
+            update_ops = {}
+
+            # Handle removing previous feedback
+            if previous_feedback == "like":
+                update_ops["$inc"] = {"feedback_stats.total_likes": -1}
+            elif previous_feedback == "dislike":
+                update_ops["$inc"] = {"feedback_stats.total_dislikes": -1}
+
+            # Handle adding new feedback
+            if new_feedback == "like":
+                if "$inc" in update_ops:
+                    update_ops["$inc"]["feedback_stats.total_likes"] = \
+                        update_ops["$inc"].get("feedback_stats.total_likes", 0) + 1
+                else:
+                    update_ops["$inc"] = {"feedback_stats.total_likes": 1}
+            elif new_feedback == "dislike":
+                if "$inc" in update_ops:
+                    update_ops["$inc"]["feedback_stats.total_dislikes"] = \
+                        update_ops["$inc"].get("feedback_stats.total_dislikes", 0) + 1
+                else:
+                    update_ops["$inc"] = {"feedback_stats.total_dislikes": 1}
+
+            if update_ops:
+                await self.files_collection.update_one(
+                    {"filename": filename},
+                    update_ops
+                )
+                logger.debug(f"Updated feedback for file {filename}: {new_feedback}")
+
+        except Exception as e:
+            logger.error(f"Error updating file feedback for {filename}: {str(e)}")
+
 
 # Global file service instance (will be initialized with database in main.py)
 file_service: Optional[FileService] = None

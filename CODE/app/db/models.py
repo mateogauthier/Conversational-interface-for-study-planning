@@ -60,6 +60,19 @@ class UserInDB(BaseModel):
     )
 
 
+class FileFeedbackStats(BaseModel):
+    """File feedback statistics embedded model."""
+
+    total_uses: int = Field(default=0, description="Total times file was used in conversations")
+    total_likes: int = Field(default=0, description="Total likes received")
+    total_dislikes: int = Field(default=0, description="Total dislikes received")
+    last_used: Optional[datetime] = Field(None, description="Last time file was used")
+
+    model_config = ConfigDict(
+        json_encoders={datetime: lambda v: v.isoformat()}
+    )
+
+
 class FileMetadataInDB(BaseModel):
     """File metadata document model for MongoDB."""
 
@@ -73,6 +86,7 @@ class FileMetadataInDB(BaseModel):
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
     processed: bool = Field(default=False, description="Whether file has been processed by RAG")
     chunk_count: int = Field(default=0, description="Number of chunks generated")
+    feedback_stats: FileFeedbackStats = Field(default_factory=FileFeedbackStats, description="Feedback statistics for this file")
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -115,6 +129,8 @@ class MessageInDB(BaseModel):
     content: str = Field(..., description="Message content")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     model_used: Optional[str] = Field(None, description="LLM model used for assistant messages")
+    source_files: List[str] = Field(default_factory=list, description="List of source file names used for this response")
+    feedback: Optional[Literal["like", "dislike"]] = Field(None, description="User feedback for this message (assistant only)")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata (sources, token count, etc.)")
 
     model_config = ConfigDict(

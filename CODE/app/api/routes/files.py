@@ -119,6 +119,7 @@ async def list_files(
         files = await file_service.list_files(user=current_user)
 
         # Convert to FileOwnershipInfo response
+        from app.models.user import FileFeedbackStatsInfo
         file_info_list = []
         for file_metadata in files:
             # Get user email (would need to query users collection - simplified here)
@@ -129,7 +130,13 @@ async def list_files(
                 is_public=file_metadata.is_public,
                 uploaded_at=file_metadata.uploaded_at,
                 file_size=file_metadata.file_size,
-                chunk_count=file_metadata.chunk_count
+                chunk_count=file_metadata.chunk_count,
+                feedback_stats=FileFeedbackStatsInfo(
+                    total_uses=file_metadata.feedback_stats.total_uses,
+                    total_likes=file_metadata.feedback_stats.total_likes,
+                    total_dislikes=file_metadata.feedback_stats.total_dislikes,
+                    last_used=file_metadata.feedback_stats.last_used
+                )
             )
             file_info_list.append(file_info)
 
@@ -162,6 +169,7 @@ async def get_file_details(
         if not file_metadata:
             raise FileNotFoundHTTPException(filename)
 
+        from app.models.user import FileFeedbackStatsInfo
         return FileOwnershipInfo(
             filename=file_metadata.filename,
             user_id=file_metadata.user_id,
@@ -169,7 +177,13 @@ async def get_file_details(
             is_public=file_metadata.is_public,
             uploaded_at=file_metadata.uploaded_at,
             file_size=file_metadata.file_size,
-            chunk_count=file_metadata.chunk_count
+            chunk_count=file_metadata.chunk_count,
+            feedback_stats=FileFeedbackStatsInfo(
+                total_uses=file_metadata.feedback_stats.total_uses,
+                total_likes=file_metadata.feedback_stats.total_likes,
+                total_dislikes=file_metadata.feedback_stats.total_dislikes,
+                last_used=file_metadata.feedback_stats.last_used
+            )
         )
 
     except (FileNotFoundHTTPException, ForbiddenHTTPException):

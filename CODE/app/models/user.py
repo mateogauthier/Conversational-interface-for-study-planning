@@ -97,6 +97,15 @@ class UserListResponse(BaseModel):
         }
 
 
+class FileFeedbackStatsInfo(BaseModel):
+    """File feedback statistics for API responses."""
+
+    total_uses: int = Field(default=0, description="Total times file was used")
+    total_likes: int = Field(default=0, description="Total likes received")
+    total_dislikes: int = Field(default=0, description="Total dislikes received")
+    last_used: Optional[datetime] = Field(None, description="Last time file was used")
+
+
 class FileOwnershipInfo(BaseModel):
     """File ownership information for API responses."""
 
@@ -107,6 +116,7 @@ class FileOwnershipInfo(BaseModel):
     uploaded_at: datetime = Field(..., description="Upload timestamp")
     file_size: int = Field(..., description="File size in bytes")
     chunk_count: int = Field(..., description="Number of chunks generated")
+    feedback_stats: FileFeedbackStatsInfo = Field(default_factory=FileFeedbackStatsInfo, description="Feedback statistics")
 
     class Config:
         json_schema_extra = {
@@ -117,6 +127,12 @@ class FileOwnershipInfo(BaseModel):
                 "is_public": False,
                 "uploaded_at": "2025-01-10T10:00:00Z",
                 "file_size": 204800,
-                "chunk_count": 15
+                "chunk_count": 15,
+                "feedback_stats": {
+                    "total_uses": 10,
+                    "total_likes": 7,
+                    "total_dislikes": 1,
+                    "last_used": "2025-01-11T15:30:00Z"
+                }
             }
         }

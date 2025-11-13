@@ -182,23 +182,6 @@ function SettingsPage() {
                   </p>
                 </div>
 
-                {/* RAG Toggle */}
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <input
-                      type="checkbox"
-                      id="useRAG"
-                      checked={useRAG}
-                      onChange={handleRAGToggle}
-                      style={{ cursor: 'pointer', width: '18px', height: '18px' }}
-                    />
-                    {t('settings.useRAG')}
-                  </label>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#718096' }}>
-                    {t('settings.useRAGHint')}
-                  </p>
-                </div>
-
                 {/* Chunks Preference */}
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
@@ -217,6 +200,23 @@ function SettingsPage() {
                   </select>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#718096' }}>
                     {t('settings.contextChunksHint')}
+                  </p>
+                </div>
+
+                {/* RAG Toggle */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <input
+                      type="checkbox"
+                      id="useRAG"
+                      checked={useRAG}
+                      onChange={handleRAGToggle}
+                      style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                    />
+                    {t('settings.useRAG')}
+                  </label>
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#718096' }}>
+                    {t('settings.useRAGHint')}
                   </p>
                 </div>
               </div>

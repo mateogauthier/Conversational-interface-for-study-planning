@@ -36,6 +36,9 @@ async def get_file_service(
     """Get file service dependency with database support."""
     return get_file_service_instance(database)
 
+# Alias for consistency with other dependencies
+get_file_service_dep = get_file_service
+
 
 def get_llm_service() -> LLMService:
     """Get LLM service dependency."""

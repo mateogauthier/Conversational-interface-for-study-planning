@@ -327,6 +327,8 @@ body {
   padding: 1rem;
   border-radius: 8px;
   animation: fadeIn 0.3s ease;
+  margin-left: 1rem;
+  margin-right: 1rem;
 }
 
 @keyframes fadeIn {
@@ -343,14 +345,18 @@ body {
 .chat-message.user {
   background-color: #667eea;
   color: white;
-  margin-left: 20%;
+  margin-left: auto;
+  margin-right: 1rem;
+  max-width: 75%;
   border-bottom-right-radius: 4px;
 }
 
 .chat-message.assistant {
   background-color: white;
   color: #2d3748;
-  margin-right: 20%;
+  margin-left: 1rem;
+  margin-right: auto;
+  max-width: 75%;
   border: 1px solid #e2e8f0;
   border-bottom-left-radius: 4px;
 }
@@ -497,11 +503,15 @@ body {
   }
 
   .chat-message.user {
-    margin-left: 10%;
+    margin-left: auto;
+    margin-right: 0.5rem;
+    max-width: 85%;
   }
 
   .chat-message.assistant {
-    margin-right: 10%;
+    margin-left: 0.5rem;
+    margin-right: auto;
+    max-width: 85%;
   }
 
   .file-item {

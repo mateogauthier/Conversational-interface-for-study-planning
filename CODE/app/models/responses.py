@@ -30,6 +30,14 @@ class LLMResponse(BaseResponse):
     model_used: Optional[str] = Field(None, description="Model that generated the response")
 
 
+class FileFeedbackStatsResponse(BaseModel):
+    """File feedback statistics response model."""
+    total_uses: int = Field(..., description="Total times file was used")
+    total_likes: int = Field(..., description="Total likes received")
+    total_dislikes: int = Field(..., description="Total dislikes received")
+    last_used: Optional[str] = Field(None, description="Last time file was used (ISO format)")
+
+
 class FileInfo(BaseModel):
     """File information model."""
     filename: str = Field(..., description="Name of the file")
@@ -40,6 +48,7 @@ class FileInfo(BaseModel):
     created_at: float = Field(..., description="Creation timestamp")
     modified_at: float = Field(..., description="Last modification timestamp")
     is_supported: bool = Field(..., description="Whether the file type is supported for processing")
+    feedback_stats: Optional[FileFeedbackStatsResponse] = Field(None, description="Feedback statistics for this file")
 
 
 class FileUploadResponse(BaseResponse):
@@ -97,7 +106,7 @@ class APIInfoResponse(BaseResponse):
     title: str = Field(..., description="API title")
     version: str = Field(..., description="API version")
     description: str = Field(..., description="API description")
-    endpoints: Dict[str, str] = Field(..., description="Available endpoints and their descriptions")
+    endpoints: Dict[str, Any] = Field(..., description="Available endpoints and their descriptions")
 
 
 class ConversationInfo(BaseModel):
@@ -123,6 +132,8 @@ class MessageInfo(BaseModel):
     content: str = Field(..., description="Message content")
     timestamp: datetime = Field(..., description="Message timestamp")
     model_used: Optional[str] = Field(None, description="LLM model used (for assistant messages)")
+    source_files: List[str] = Field(default_factory=list, description="Source files used for this response")
+    feedback: Optional[str] = Field(None, description="User feedback (like or dislike)")
 
 
 class ConversationListResponse(BaseResponse):

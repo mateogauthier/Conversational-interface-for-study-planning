@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X } from 'lucide-react';
+import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { ragApi, llmApi, conversationApi } from '../services/api';
+import { ragApi, llmApi, conversationApi, feedbackApi } from '../services/api';
 
 function HomePage() {
   const { t } = useTranslation();
@@ -58,11 +58,14 @@ function HomePage() {
 
       // Convert messages to chat format
       const chatMessages = response.messages.map(msg => ({
+        id: msg._id || msg.id,
         type: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content,
         timestamp: new Date(msg.timestamp),
         model: msg.model_used,
-        // Note: sources and chunks are not stored in message history
+        sources: msg.source_files || [],
+        feedback: msg.feedback,
+        // Note: chunks are not stored in message history
       }));
 
       setMessages(chatMessages);
@@ -138,6 +141,7 @@ function HomePage() {
         setCurrentConversationId(response.conversation_id);
 
         const assistantMessage = {
+          id: response.message_id,
           type: 'assistant',
           content: response.answer,
           sources: response.sources,
@@ -359,7 +363,7 @@ function HomePage() {
           style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '1.5rem',
+            padding: '0',
             backgroundColor: '#f8fafc',
           }}
         >
@@ -427,6 +431,23 @@ function HomePage() {
 
 function ChatMessage({ message }) {
   const { t } = useTranslation();
+  const [feedback, setFeedback] = useState(message.feedback || null);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+
+  const handleFeedback = async (newFeedback) => {
+    if (submittingFeedback || !message.id) return;
+
+    try {
+      setSubmittingFeedback(true);
+      await feedbackApi.submitFeedback(message.id, newFeedback);
+      setFeedback(newFeedback);
+    } catch (error) {
+      console.error('Failed to submit feedback:', error);
+      // Optionally show error message to user
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
 
   return (
     <div className={`chat-message ${message.type}`} style={{ marginBottom: '1rem' }}>
@@ -450,11 +471,61 @@ function ChatMessage({ message }) {
         </div>
       )}
 
-      {message.model && (
-        <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#a0aec0' }}>
-          {t('home.model')}: {message.model}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
+        <div>
+          {message.model && (
+            <div style={{ fontSize: '0.75rem', color: '#a0aec0' }}>
+              {t('home.model')}: {message.model}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Feedback buttons for assistant messages */}
+        {message.type === 'assistant' && message.id && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              onClick={() => handleFeedback('like')}
+              disabled={submittingFeedback}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                padding: '0.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                color: feedback === 'like' ? '#48bb78' : '#a0aec0',
+                transition: 'color 0.2s',
+                opacity: submittingFeedback ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => !submittingFeedback && feedback !== 'like' && (e.currentTarget.style.color = '#48bb78')}
+              onMouseLeave={(e) => feedback !== 'like' && (e.currentTarget.style.color = '#a0aec0')}
+              title={t('home.like')}
+            >
+              <ThumbsUp size={16} fill={feedback === 'like' ? '#48bb78' : 'none'} />
+            </button>
+            <button
+              onClick={() => handleFeedback('dislike')}
+              disabled={submittingFeedback}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                padding: '0.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                color: feedback === 'dislike' ? '#f56565' : '#a0aec0',
+                transition: 'color 0.2s',
+                opacity: submittingFeedback ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => !submittingFeedback && feedback !== 'dislike' && (e.currentTarget.style.color = '#f56565')}
+              onMouseLeave={(e) => feedback !== 'dislike' && (e.currentTarget.style.color = '#a0aec0')}
+              title={t('home.dislike')}
+            >
+              <ThumbsDown size={16} fill={feedback === 'dislike' ? '#f56565' : 'none'} />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

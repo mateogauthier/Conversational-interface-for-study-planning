@@ -193,4 +193,16 @@ export const conversationApi = {
   },
 };
 
+// Feedback API
+export const feedbackApi = {
+  // Submit feedback for a message
+  submitFeedback: async (messageId, feedback) => {
+    const response = await api.post('/feedback/message', {
+      message_id: messageId,
+      feedback: feedback, // 'like' or 'dislike'
+    });
+    return response.data;
+  },
+};
+
 export default api;

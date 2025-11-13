@@ -42,7 +42,9 @@ const resources = {
         model: 'Model',
         useRAG: 'Use RAG (Retrieval-Augmented Generation)',
         ragEnabled: 'Queries will use document context',
-        ragDisabled: 'Direct LLM queries without documents'
+        ragDisabled: 'Direct LLM queries without documents',
+        like: 'Like this response',
+        dislike: 'Dislike this response'
       },
 
       // Files Page
@@ -69,7 +71,16 @@ const resources = {
         uploadError: 'Upload failed. Please try again.',
         deleteConfirm: 'Are you sure you want to delete',
         deleteSuccess: 'deleted successfully.',
-        deleteError: 'Failed to delete'
+        deleteError: 'Failed to delete',
+        publicFiles: 'Public Files',
+        privateFiles: 'Private Files',
+        showing: 'Showing',
+        of: 'of',
+        public: 'public',
+        private: 'private',
+        page: 'Page',
+        previous: 'Previous',
+        next: 'Next'
       },
 
       // Settings Page
@@ -176,7 +187,9 @@ const resources = {
         model: 'Modelo',
         useRAG: 'Usar RAG (Generación Aumentada con Recuperación)',
         ragEnabled: 'Las consultas usarán el contexto de los documentos',
-        ragDisabled: 'Consultas directas al LLM sin documentos'
+        ragDisabled: 'Consultas directas al LLM sin documentos',
+        like: 'Me gusta esta respuesta',
+        dislike: 'No me gusta esta respuesta'
       },
 
       // Files Page
@@ -203,7 +216,16 @@ const resources = {
         uploadError: 'Fallo al subir. Por favor intenta de nuevo.',
         deleteConfirm: '¿Estás seguro de que quieres eliminar',
         deleteSuccess: 'eliminado exitosamente.',
-        deleteError: 'Fallo al eliminar'
+        deleteError: 'Fallo al eliminar',
+        publicFiles: 'Archivos Públicos',
+        privateFiles: 'Archivos Privados',
+        showing: 'Mostrando',
+        of: 'de',
+        public: 'públicos',
+        private: 'privados',
+        page: 'Página',
+        previous: 'Anterior',
+        next: 'Siguiente'
       },
 
       // Settings Page

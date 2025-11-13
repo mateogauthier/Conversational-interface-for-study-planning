@@ -9,12 +9,14 @@ from app.api.dependencies import (
     get_current_user,
     get_current_admin,
     get_user_service_dep,
-    get_conversation_service_dep
+    get_conversation_service_dep,
+    get_file_service_dep
 )
 from app.services.rag_service import RAGService
 from app.services.llm_service import LLMService
 from app.services.user_service import UserService
 from app.services.conversation_service import ConversationService
+from app.services.file_service import FileService
 from app.db.models import UserInDB
 from app.models.requests import RAGRequest, RAGLLMRequest
 from app.models.responses import (
@@ -108,7 +110,8 @@ async def rag_query(
     rag_service: RAGService = Depends(get_rag_service),
     llm_service: LLMService = Depends(get_llm_service),
     user_service: UserService = Depends(get_user_service_dep),
-    conversation_service: ConversationService = Depends(get_conversation_service_dep)
+    conversation_service: ConversationService = Depends(get_conversation_service_dep),
+    file_service: FileService = Depends(get_file_service_dep)
 ):
     """
     Query documents and get LLM-generated answer with user-based filtering and conversation support.
@@ -116,6 +119,7 @@ async def rag_query(
     - Students: Query their private files + all public files
     - Admins: Query only public files
     - Automatically creates conversations and maintains history
+    - Tracks file usage for each conversation
     """
     try:
         # Check if LLM is available
@@ -166,15 +170,28 @@ async def rag_query(
             conversation_history=conversation_history
         )
 
-        # Save assistant message to conversation
+        # Extract unique source files
+        source_files = list(set([chunk.metadata.get('file_name', 'Unknown')
+                               for chunk in search_results["relevant_chunks"]]))
+
+        # Track file usage (once per file per conversation)
+        # Get files already used in this conversation
+        files_already_used = await conversation_service.get_files_used_in_conversation(conversation_id)
+
+        # Track usage only for new files (not previously used in this conversation)
+        for filename in source_files:
+            if filename != 'Unknown' and filename not in files_already_used:
+                await file_service.track_file_usage(filename)
+
+        # Save assistant message to conversation with source files
         assistant_message_id = await conversation_service.add_message(
             conversation_id=conversation_id,
             role="assistant",
             content=llm_response["response"],
             model_used=llm_response.get("model_used"),
+            source_files=source_files,
             metadata={
-                "sources": list(set([chunk.metadata.get('file_name', 'Unknown')
-                                   for chunk in search_results["relevant_chunks"]])),
+                "sources": source_files,
                 "n_chunks": search_results["n_chunks_found"]
             }
         )
