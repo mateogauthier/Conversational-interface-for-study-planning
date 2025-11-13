@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import './App.css';
 
 // Auth
@@ -14,6 +14,23 @@ import HomePage from './pages/HomePage';
 import FilesPage from './pages/FilesPage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
+
+function MainContent() {
+  const location = useLocation();
+  const isHomePage = location.pathname === '/' || location.pathname === '/home';
+
+  return (
+    <main className={isHomePage ? 'main-content home-page-content' : 'main-content'}>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/home" element={<HomePage />} />
+        <Route path="/files" element={<FilesPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+      </Routes>
+    </main>
+  );
+}
 
 function AppContent() {
   const { accessToken } = useAuth();
@@ -35,15 +52,7 @@ function AppContent() {
             <ProtectedRoute>
               <div className="app">
                 <Header />
-                <main className="main-content">
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/home" element={<HomePage />} />
-                    <Route path="/files" element={<FilesPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/profile" element={<ProfilePage />} />
-                  </Routes>
-                </main>
+                <MainContent />
               </div>
             </ProtectedRoute>
           }

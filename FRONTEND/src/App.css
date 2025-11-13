@@ -92,6 +92,11 @@ body {
   background-color: #f5f7fa;
 }
 
+/* HomePage specific: no padding for full-width conversation layout */
+.home-page-content {
+  padding: 0 !important;
+}
+
 /* Card Styles */
 .card {
   background: white;
