@@ -60,7 +60,7 @@ async def upload_file(
         chunk_count = 0
         processed_for_rag = False
         try:
-            chunk_count = rag_service.process_document(
+            chunk_count = await rag_service.process_document_async(
                 file_path=file_path,
                 user_id=str(current_user.id),
                 is_public=is_public,
@@ -218,7 +218,7 @@ async def delete_file(
 
         # Delete from RAG first (if exists)
         try:
-            rag_service.delete_document_chunks(
+            await rag_service.delete_document_chunks_async(
                 filename=filename,
                 user_id=file_metadata.user_id
             )

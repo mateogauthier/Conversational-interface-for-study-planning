@@ -44,7 +44,24 @@ const resources = {
         ragEnabled: 'Queries will use document context',
         ragDisabled: 'Direct LLM queries without documents',
         like: 'Like this response',
-        dislike: 'Dislike this response'
+        dislike: 'Dislike this response',
+        // Conversations sidebar
+        conversations: 'Conversations',
+        closeSidebar: 'Close sidebar',
+        openSidebar: 'Open sidebar',
+        newConversation: 'New Conversation',
+        loadingConversations: 'Loading conversations...',
+        noConversations: 'No conversations yet',
+        startNew: 'Start a new one!',
+        messages: 'messages',
+        deleteConversation: 'Delete conversation',
+        deleteConfirm: 'Are you sure you want to delete this conversation?',
+        deleteError: 'Failed to delete conversation. Please try again.',
+        loadError: 'Failed to load conversation. Please try again.',
+        continueConversation: 'Continue Conversation',
+        continueBelow: 'Continue the conversation below',
+        startOrSelect: 'Start a new conversation or select one from the sidebar',
+        errorMessage: 'Sorry, I encountered an error while processing your query. Please try again.'
       },
 
       // Files Page
@@ -189,7 +206,24 @@ const resources = {
         ragEnabled: 'Las consultas usarán el contexto de los documentos',
         ragDisabled: 'Consultas directas al LLM sin documentos',
         like: 'Me gusta esta respuesta',
-        dislike: 'No me gusta esta respuesta'
+        dislike: 'No me gusta esta respuesta',
+        // Conversations sidebar
+        conversations: 'Conversaciones',
+        closeSidebar: 'Cerrar barra lateral',
+        openSidebar: 'Abrir barra lateral',
+        newConversation: 'Nueva Conversación',
+        loadingConversations: 'Cargando conversaciones...',
+        noConversations: 'Aún no hay conversaciones',
+        startNew: '¡Inicia una nueva!',
+        messages: 'mensajes',
+        deleteConversation: 'Eliminar conversación',
+        deleteConfirm: '¿Estás seguro de que quieres eliminar esta conversación?',
+        deleteError: 'Error al eliminar la conversación. Por favor intenta de nuevo.',
+        loadError: 'Error al cargar la conversación. Por favor intenta de nuevo.',
+        continueConversation: 'Continuar Conversación',
+        continueBelow: 'Continúa la conversación abajo',
+        startOrSelect: 'Inicia una nueva conversación o selecciona una de la barra lateral',
+        errorMessage: 'Lo siento, encontré un error al procesar tu consulta. Por favor intenta de nuevo.'
       },
 
       // Files Page

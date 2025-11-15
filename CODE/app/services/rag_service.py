@@ -2,8 +2,10 @@
 
 import os
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+from functools import partial
 
 import chromadb
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -413,6 +415,106 @@ class RAGService:
             return True
         except Exception:
             return False
+
+    # === Async Wrapper Methods ===
+    # These methods offload blocking operations to thread pool for true async behavior
+
+    async def process_document_async(
+        self,
+        file_path: str,
+        user_id: str,
+        is_public: bool,
+        filename: str
+    ) -> int:
+        """
+        Async wrapper for process_document.
+        Offloads CPU/IO-intensive operations to thread pool.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            partial(self.process_document, file_path, user_id, is_public, filename)
+        )
+
+    async def retrieve_relevant_chunks_async(
+        self,
+        query: str,
+        user: UserInDB,
+        n_results: int = 5
+    ) -> List[RelevantChunk]:
+        """
+        Async wrapper for retrieve_relevant_chunks.
+        Offloads embedding generation and ChromaDB query to thread pool.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            partial(self.retrieve_relevant_chunks, query, user, n_results)
+        )
+
+    async def search_documents_async(
+        self,
+        query: str,
+        user: UserInDB,
+        n_results: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Async wrapper for search_documents.
+        Offloads search operations to thread pool.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            partial(self.search_documents, query, user, n_results)
+        )
+
+    async def delete_document_chunks_async(
+        self,
+        filename: str,
+        user_id: str
+    ) -> bool:
+        """
+        Async wrapper for delete_document_chunks.
+        Offloads ChromaDB operations to thread pool.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            partial(self.delete_document_chunks, filename, user_id)
+        )
+
+    async def get_collection_stats_async(self) -> RAGStatsResponse:
+        """
+        Async wrapper for get_collection_stats.
+        Offloads ChromaDB operations to thread pool.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self.get_collection_stats
+        )
+
+    async def get_user_stats_async(self, user: UserInDB) -> RAGStatsResponse:
+        """
+        Async wrapper for get_user_stats.
+        Offloads ChromaDB operations to thread pool.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            partial(self.get_user_stats, user)
+        )
+
+    async def reset_public_documents_async(self) -> bool:
+        """
+        Async wrapper for reset_public_documents.
+        Offloads ChromaDB operations to thread pool.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self.reset_public_documents
+        )
 
 
 # Global RAG service instance

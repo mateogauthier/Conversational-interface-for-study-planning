@@ -72,7 +72,7 @@ function HomePage() {
       setCurrentConversationId(conversationId);
     } catch (error) {
       console.error('Failed to load conversation:', error);
-      alert('Failed to load conversation. Please try again.');
+      alert(t('home.loadError'));
     }
   };
 
@@ -84,7 +84,7 @@ function HomePage() {
   const deleteConversation = async (conversationId, e) => {
     e.stopPropagation(); // Prevent triggering loadConversation
 
-    if (!confirm('Are you sure you want to delete this conversation?')) {
+    if (!confirm(t('home.deleteConfirm'))) {
       return;
     }
 
@@ -100,7 +100,7 @@ function HomePage() {
       loadConversations();
     } catch (error) {
       console.error('Failed to delete conversation:', error);
-      alert('Failed to delete conversation. Please try again.');
+      alert(t('home.deleteError'));
     }
   };
 
@@ -174,7 +174,7 @@ function HomePage() {
         type: 'assistant',
         content:
           error.response?.data?.detail ||
-          'Sorry, I encountered an error while processing your query. Please try again.',
+          t('home.errorMessage'),
         error: true,
         timestamp: new Date(),
       };
@@ -211,13 +211,13 @@ function HomePage() {
           }}
         >
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#2d3748' }}>
-            Conversations
+            {t('home.conversations')}
           </h3>
           <button
             onClick={() => setSidebarOpen(false)}
             className="btn btn-secondary"
             style={{ padding: '0.25rem', minWidth: 'auto' }}
-            title="Close sidebar"
+            title={t('home.closeSidebar')}
           >
             <X size={16} />
           </button>
@@ -231,7 +231,7 @@ function HomePage() {
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}
           >
             <Plus size={18} />
-            New Conversation
+            {t('home.newConversation')}
           </button>
         </div>
 
@@ -240,13 +240,13 @@ function HomePage() {
           {conversationsLoading ? (
             <div style={{ textAlign: 'center', padding: '2rem 0', color: '#718096' }}>
               <Loader size={24} className="spinner-icon" style={{ animation: 'spin 1s linear infinite' }} />
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>Loading conversations...</p>
+              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>{t('home.loadingConversations')}</p>
             </div>
           ) : conversations.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#718096' }}>
               <MessageCircle size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
-              <p style={{ fontSize: '0.9rem' }}>No conversations yet</p>
-              <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Start a new one!</p>
+              <p style={{ fontSize: '0.9rem' }}>{t('home.noConversations')}</p>
+              <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('home.startNew')}</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -298,7 +298,7 @@ function HomePage() {
                         color: '#718096',
                       }}
                     >
-                      {conv.message_count} messages
+                      {conv.message_count} {t('home.messages')}
                     </p>
                   </div>
                   <button
@@ -316,7 +316,7 @@ function HomePage() {
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
-                    title="Delete conversation"
+                    title={t('home.deleteConversation')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -345,7 +345,7 @@ function HomePage() {
               onClick={() => setSidebarOpen(true)}
               className="btn btn-secondary"
               style={{ padding: '0.5rem', minWidth: 'auto' }}
-              title="Open sidebar"
+              title={t('home.openSidebar')}
             >
               <Menu size={20} />
             </button>
@@ -353,7 +353,7 @@ function HomePage() {
           <div style={{ flex: 1 }}>
             <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <MessageCircle size={24} />
-              {currentConversationId ? 'Continue Conversation' : t('home.title')}
+              {currentConversationId ? t('home.continueConversation') : t('home.title')}
             </h2>
           </div>
         </div>
@@ -374,7 +374,7 @@ function HomePage() {
                 {t('home.noMessages')}
               </p>
               <p style={{ marginTop: '0.5rem', fontSize: '1rem', color: '#718096' }}>
-                {currentConversationId ? 'Continue the conversation below' : 'Start a new conversation or select one from the sidebar'}
+                {currentConversationId ? t('home.continueBelow') : t('home.startOrSelect')}
               </p>
             </div>
           )}

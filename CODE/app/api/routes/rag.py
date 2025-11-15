@@ -51,7 +51,7 @@ async def rag_search(
     """
     try:
         # Search documents with user permissions
-        search_results = rag_service.search_documents(
+        search_results = await rag_service.search_documents_async(
             query=request.prompt,
             user=current_user,
             n_results=request.n_results
@@ -61,9 +61,9 @@ async def rag_search(
         await user_service.increment_query_count(str(current_user.id))
 
         # If LLM completion is requested and context is available
-        if request.use_llm and search_results.get("context") and llm_service.is_available():
+        if request.use_llm and search_results.get("context") and await llm_service.is_available():
             try:
-                llm_response = llm_service.generate_with_context(
+                llm_response = await llm_service.generate_with_context(
                     request.prompt,
                     search_results["context"],
                     model=request.model,
@@ -123,7 +123,7 @@ async def rag_query(
     """
     try:
         # Check if LLM is available
-        if not llm_service.is_available():
+        if not await llm_service.is_available():
             raise LLMNotAvailableHTTPException("LLM service is not available")
 
         # Handle conversation flow
@@ -151,7 +151,7 @@ async def rag_query(
         )
 
         # Search documents with user permissions
-        search_results = rag_service.search_documents(
+        search_results = await rag_service.search_documents_async(
             query=request.prompt,
             user=current_user,
             n_results=request.n_results
@@ -161,7 +161,7 @@ async def rag_query(
         await user_service.increment_query_count(str(current_user.id))
 
         # Generate answer with LLM (including conversation history)
-        llm_response = llm_service.generate_with_context(
+        llm_response = await llm_service.generate_with_context(
             prompt=request.prompt,
             context=search_results["context"],
             model=request.model,
@@ -232,7 +232,7 @@ async def get_stats(
     - Admins: Stats for public files only
     """
     try:
-        stats = rag_service.get_user_stats(current_user)
+        stats = await rag_service.get_user_stats_async(current_user)
         return stats
     except RAGException as e:
         logger.error(f"Failed to get stats: {str(e)}")
@@ -253,7 +253,7 @@ async def reset_collection(
     This deletes all public RAG data but preserves student private files.
     """
     try:
-        success = rag_service.reset_public_documents()
+        success = await rag_service.reset_public_documents_async()
 
         if success:
             return BaseResponse(

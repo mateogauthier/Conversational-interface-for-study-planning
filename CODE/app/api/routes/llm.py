@@ -21,7 +21,7 @@ async def llm_query(
 ):
     """Direct LLM query without RAG (authenticated users only)."""
     try:
-        response = llm_service.generate_response(request.prompt, request.model)
+        response = await llm_service.generate_response(request.prompt, request.model)
         return LLMResponse(
             message="LLM query successful",
             response=response["response"],
@@ -42,7 +42,7 @@ async def llm_status(
 ):
     """Get LLM service status and information (authenticated users only)."""
     try:
-        service_info = llm_service.get_service_info()
+        service_info = await llm_service.get_service_info()
         return service_info
     except Exception as e:
         return {
@@ -59,7 +59,7 @@ async def list_models(
 ):
     """Get list of available LLM models (authenticated users only)."""
     try:
-        models = llm_service.get_available_models()
+        models = await llm_service.get_available_models()
         return {
             "models": models,
             "total_models": len(models)
@@ -80,7 +80,7 @@ async def ensure_model(
 ):
     """Ensure a specific model is available - admin only (pulls if necessary)."""
     try:
-        success = llm_service.ensure_model(model_name)
+        success = await llm_service.ensure_model(model_name)
         if success:
             return BaseResponse(
                 message=f"Model '{model_name}' is available"
@@ -102,7 +102,7 @@ async def llm_health_check(
     llm_service: LLMService = Depends(get_llm_service)
 ):
     """Health check for LLM service (authenticated users only)."""
-    is_available = llm_service.is_available()
+    is_available = await llm_service.is_available()
     return {
         "service": "LLM",
         "status": "healthy" if is_available else "unavailable",
