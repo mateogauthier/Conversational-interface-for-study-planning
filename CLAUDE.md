@@ -194,7 +194,55 @@ If Ollama is not available, the API will still start but LLM endpoints will retu
 2. **ollama**: LLM service (Ollama with models)
    - Port: 11434 (exposed in dev, internal-only in prod)
    - Volumes: ollama-models (persists downloaded models)
-   - Optional: GPU support (uncomment deploy section in docker-compose.yml)
+   - **GPU Support**: Enabled by default (requires NVIDIA Container Toolkit)
+   - Automatic CPU fallback if GPU not available
+
+### GPU Support
+
+**NVIDIA GPU Acceleration** (Enabled by default):
+
+The Ollama container is configured to automatically use NVIDIA GPUs for faster LLM inference.
+
+**Prerequisites:**
+1. **NVIDIA GPU** with CUDA support (GTX/RTX 10-series or newer)
+2. **NVIDIA drivers** installed on host (version 450.80.02 or newer)
+3. **NVIDIA Container Toolkit** installed:
+   ```bash
+   # Ubuntu/Debian
+   distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update
+   sudo apt-get install -y nvidia-container-toolkit
+   sudo systemctl restart docker
+   ```
+
+**Verify GPU is Available:**
+```bash
+# Check NVIDIA drivers
+nvidia-smi
+
+# Test Docker GPU access
+docker run --rm --gpus all ubuntu nvidia-smi
+
+# Check if Ollama container can see GPU
+docker exec study-planning-ollama nvidia-smi
+```
+
+**Monitor GPU Usage:**
+```bash
+# Watch GPU utilization during LLM inference
+watch -n 1 nvidia-smi
+```
+
+**Automatic CPU Fallback:**
+- If GPU is not available, Ollama automatically falls back to CPU mode
+- No configuration changes needed
+- Performance will be slower but functionality remains intact
+
+**Note:** If you don't have an NVIDIA GPU or don't want to install NVIDIA Container Toolkit, the containers will fail to start. Ollama requires GPU configuration to be valid even if using CPU fallback.
 
 ### Volume Management
 

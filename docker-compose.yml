@@ -115,18 +115,11 @@ services:
       start_period: 10s
     deploy:
       resources:
-        limits:
-          memory: 8G
         reservations:
-          memory: 4G
-    # Uncomment below for GPU support (requires nvidia-docker)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 networks:
   study-planning-network:
