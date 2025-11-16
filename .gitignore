@@ -234,3 +234,43 @@ sample_*
 
 # claude
 .claude
+
+# Node.js / Frontend
+node_modules/
+FRONTEND/node_modules/
+
+# Vite build cache and output
+.vite/
+FRONTEND/.vite/
+FRONTEND/dist/
+
+# Package manager lock files (optional - some prefer to commit these)
+# Uncomment if you want to ignore lock files:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Frontend environment files (already covered above but being explicit)
+FRONTEND/.env
+FRONTEND/.env.local
+FRONTEND/.env.development.local
+FRONTEND/.env.production.local
+
+# Build outputs
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.DS_Store
+*.local
+*.sw?
+
+# Docker data directories
+CODE/data/uploads/
+CODE/data/chroma_db/
