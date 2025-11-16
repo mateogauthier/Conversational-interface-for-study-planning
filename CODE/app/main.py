@@ -10,6 +10,7 @@ from app.api.routes import files, llm, rag, users, admin, conversations, feedbac
 from app.models.responses import APIInfoResponse, HealthResponse
 from app.db.database import mongodb
 from app.services import conversation_service as conv_service_module
+from app.services import feedback_service as feedback_service_module
 
 # Configure logging
 logging.basicConfig(
@@ -73,6 +74,10 @@ async def startup_event():
         db = mongodb.get_database()
         conv_service_module.conversation_service = conv_service_module.ConversationService(db)
         logger.info("Conversation service initialized")
+
+        # Initialize feedback service with database
+        feedback_service_module.feedback_service = feedback_service_module.FeedbackService(db)
+        logger.info("Feedback service initialized")
 
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")

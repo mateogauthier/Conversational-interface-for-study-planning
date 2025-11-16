@@ -41,3 +41,33 @@ class MessageFeedbackRequest(BaseModel):
     """Request model for submitting feedback on a message."""
     message_id: str = Field(..., description="ID of the message to provide feedback for")
     feedback: str = Field(..., description="Feedback type: 'like' or 'dislike'")
+    comment: Optional[str] = Field(None, description="Optional written feedback comment")
+
+
+class FeedbackSubmitRequest(BaseModel):
+    """Request model for submitting general feedback."""
+    comment: str = Field(..., description="Written feedback text", min_length=1)
+    rating: Optional[str] = Field(None, description="Rating: 'like' or 'dislike'")
+    message_id: Optional[str] = Field(None, description="Optional message ID if tied to specific message")
+    conversation_id: Optional[str] = Field(None, description="Optional conversation ID")
+
+
+class FeedbackFilterRequest(BaseModel):
+    """Request model for filtering feedback (admin)."""
+    skip: Optional[int] = Field(0, description="Number of items to skip for pagination", ge=0)
+    limit: Optional[int] = Field(50, description="Maximum number of items to return", ge=1, le=200)
+    rating: Optional[str] = Field(None, description="Filter by rating: 'like' or 'dislike'")
+    user_id: Optional[str] = Field(None, description="Filter by user auth0_id")
+    filename: Optional[str] = Field(None, description="Filter by file name")
+    start_date: Optional[str] = Field(None, description="Filter by start date (ISO format)")
+    end_date: Optional[str] = Field(None, description="Filter by end date (ISO format)")
+
+
+class FeedbackSummaryRequest(BaseModel):
+    """Request model for generating LLM summary of feedback."""
+    rating: Optional[str] = Field(None, description="Filter by rating")
+    user_id: Optional[str] = Field(None, description="Filter by user")
+    filename: Optional[str] = Field(None, description="Filter by file")
+    start_date: Optional[str] = Field(None, description="Filter by start date (ISO format)")
+    end_date: Optional[str] = Field(None, description="Filter by end date (ISO format)")
+    max_items: Optional[int] = Field(100, description="Maximum number of feedback items to summarize", ge=1, le=500)

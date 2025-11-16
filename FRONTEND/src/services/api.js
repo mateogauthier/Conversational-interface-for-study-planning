@@ -195,12 +195,70 @@ export const conversationApi = {
 
 // Feedback API
 export const feedbackApi = {
-  // Submit feedback for a message
-  submitFeedback: async (messageId, feedback) => {
+  // Submit feedback for a message (with optional comment)
+  submitFeedback: async (messageId, feedback, comment = null) => {
     const response = await api.post('/feedback/message', {
       message_id: messageId,
       feedback: feedback, // 'like' or 'dislike'
+      comment: comment, // optional written feedback
     });
+    return response.data;
+  },
+
+  // Submit general feedback (not tied to specific message)
+  submitGeneralFeedback: async (comment, rating = null, messageId = null, conversationId = null) => {
+    const response = await api.post('/feedback/', {
+      comment: comment,
+      rating: rating, // optional 'like' or 'dislike'
+      message_id: messageId,
+      conversation_id: conversationId,
+    });
+    return response.data;
+  },
+};
+
+// Admin Feedback API
+export const adminFeedbackApi = {
+  // Get paginated list of all feedback
+  getAllFeedback: async (params = {}) => {
+    const { skip = 0, limit = 50, rating, user_id, filename, start_date, end_date } = params;
+    const queryParams = new URLSearchParams();
+    queryParams.append('skip', skip);
+    queryParams.append('limit', limit);
+    if (rating) queryParams.append('rating', rating);
+    if (user_id) queryParams.append('user_id', user_id);
+    if (filename) queryParams.append('filename', filename);
+    if (start_date) queryParams.append('start_date', start_date);
+    if (end_date) queryParams.append('end_date', end_date);
+
+    const response = await api.get(`/admin/feedback?${queryParams.toString()}`);
+    return response.data;
+  },
+
+  // Get aggregated feedback statistics
+  getStats: async () => {
+    const response = await api.get('/admin/feedback/stats');
+    return response.data;
+  },
+
+  // Generate LLM summary of feedback
+  generateSummary: async (params = {}) => {
+    const { rating, user_id, filename, start_date, end_date, max_items = 100 } = params;
+    const queryParams = new URLSearchParams();
+    if (rating) queryParams.append('rating', rating);
+    if (user_id) queryParams.append('user_id', user_id);
+    if (filename) queryParams.append('filename', filename);
+    if (start_date) queryParams.append('start_date', start_date);
+    if (end_date) queryParams.append('end_date', end_date);
+    queryParams.append('max_items', max_items);
+
+    const response = await api.post(`/admin/feedback/summary?${queryParams.toString()}`);
+    return response.data;
+  },
+
+  // Get feedback for specific file
+  getFeedbackByFile: async (filename) => {
+    const response = await api.get(`/admin/feedback/file/${encodeURIComponent(filename)}`);
     return response.data;
   },
 };

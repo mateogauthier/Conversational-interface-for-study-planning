@@ -14,6 +14,7 @@ import HomePage from './pages/HomePage';
 import FilesPage from './pages/FilesPage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
+import AdminFeedbackPage from './pages/AdminFeedbackPage';
 
 function MainContent() {
   const location = useLocation();
@@ -27,6 +28,7 @@ function MainContent() {
         <Route path="/files" element={<FilesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
       </Routes>
     </main>
   );

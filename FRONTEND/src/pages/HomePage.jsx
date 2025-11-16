@@ -433,20 +433,41 @@ function ChatMessage({ message }) {
   const { t } = useTranslation();
   const [feedback, setFeedback] = useState(message.feedback || null);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [showCommentBox, setShowCommentBox] = useState(false);
+  const [comment, setComment] = useState('');
+  const [pendingFeedback, setPendingFeedback] = useState(null);
 
   const handleFeedback = async (newFeedback) => {
     if (submittingFeedback || !message.id) return;
 
+    // Show comment box and save pending feedback
+    setPendingFeedback(newFeedback);
+    setShowCommentBox(true);
+  };
+
+  const submitFeedbackWithComment = async () => {
+    if (submittingFeedback || !message.id || !pendingFeedback) return;
+
     try {
       setSubmittingFeedback(true);
-      await feedbackApi.submitFeedback(message.id, newFeedback);
-      setFeedback(newFeedback);
+      // Submit with optional comment (empty string will be ignored by backend)
+      await feedbackApi.submitFeedback(message.id, pendingFeedback, comment.trim() || null);
+      setFeedback(pendingFeedback);
+      setShowCommentBox(false);
+      setComment('');
+      setPendingFeedback(null);
     } catch (error) {
       console.error('Failed to submit feedback:', error);
       // Optionally show error message to user
     } finally {
       setSubmittingFeedback(false);
     }
+  };
+
+  const cancelFeedback = () => {
+    setShowCommentBox(false);
+    setComment('');
+    setPendingFeedback(null);
   };
 
   return (
@@ -481,7 +502,7 @@ function ChatMessage({ message }) {
         </div>
 
         {/* Feedback buttons for assistant messages */}
-        {message.type === 'assistant' && message.id && (
+        {message.type === 'assistant' && message.id && !showCommentBox && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button
               onClick={() => handleFeedback('like')}
@@ -526,6 +547,72 @@ function ChatMessage({ message }) {
           </div>
         )}
       </div>
+
+      {/* Comment box for feedback */}
+      {showCommentBox && message.type === 'assistant' && message.id && (
+        <div style={{
+          marginTop: '1rem',
+          padding: '1rem',
+          backgroundColor: '#2d3748',
+          borderRadius: '0.5rem',
+          border: '1px solid #4a5568',
+        }}>
+          <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#a0aec0' }}>
+            {pendingFeedback === 'like' ? '👍 ' : '👎 '}
+            Add a comment (optional)
+          </div>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Share your thoughts about this response..."
+            style={{
+              width: '100%',
+              minHeight: '80px',
+              padding: '0.5rem',
+              backgroundColor: '#1a202c',
+              border: '1px solid #4a5568',
+              borderRadius: '0.25rem',
+              color: '#e2e8f0',
+              fontSize: '0.875rem',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+            }}
+          />
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <button
+              onClick={submitFeedbackWithComment}
+              disabled={submittingFeedback}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: pendingFeedback === 'like' ? '#48bb78' : '#f56565',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.25rem',
+                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                opacity: submittingFeedback ? 0.6 : 1,
+              }}
+            >
+              {submittingFeedback ? 'Submitting...' : 'Submit Feedback'}
+            </button>
+            <button
+              onClick={cancelFeedback}
+              disabled={submittingFeedback}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: 'transparent',
+                color: '#a0aec0',
+                border: '1px solid #4a5568',
+                borderRadius: '0.25rem',
+                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -153,7 +153,8 @@ The backend follows clean architecture with clear separation of concerns:
    - [auth_service.py](CODE/app/services/auth_service.py): Auth0 token verification, user creation
    - [user_service.py](CODE/app/services/user_service.py): User CRUD, statistics, permissions
    - [conversation_service.py](CODE/app/services/conversation_service.py): Conversation and message management
-   - [file_service.py](CODE/app/services/file_service.py): File validation, storage, metadata
+   - [feedback_service.py](CODE/app/services/feedback_service.py): Feedback CRUD, statistics, LLM summarization
+   - [file_service.py](CODE/app/services/file_service.py): File validation, storage, metadata, view tracking
    - [rag_service.py](CODE/app/services/rag_service.py): Document processing, embedding, vector search
    - [llm_service.py](CODE/app/services/llm_service.py): Ollama integration, prompt construction
 
@@ -286,6 +287,42 @@ The backend follows clean architecture with clear separation of concerns:
 - View user details and statistics
 - System-wide statistics aggregation
 
+#### Feedback Service ([feedback_service.py](CODE/app/services/feedback_service.py))
+
+**Feedback Collection & Management**:
+- Feedback stored in dedicated `feedback` MongoDB collection
+- Each feedback document includes:
+  - User information (user_id, auth0_id, email)
+  - Rating (like/dislike/neutral)
+  - Written comment
+  - Associated message_id and conversation_id (optional)
+  - Files referenced in the response
+  - Timestamps (created_at, updated_at)
+
+**Key Methods**:
+- `submit_feedback()` - Create new feedback document
+- `get_all_feedback()` - Paginated list with filtering (rating, user, file, date range)
+- `get_feedback_stats()` - Aggregated statistics (total feedback, likes/dislikes, top users/files)
+- `generate_feedback_summary()` - LLM-powered analysis of feedback
+- `get_feedback_by_file()` - File-specific feedback
+- `get_feedback_by_user()` - User-specific feedback
+
+**LLM Summarization** ([feedback_service.py:286-365](CODE/app/services/feedback_service.py#L286-L365)):
+- Aggregates feedback text from multiple submissions
+- Constructs prompt asking LLM to analyze:
+  - Overall sentiment (positive/negative/mixed)
+  - Key themes and topics
+  - Common praise and complaints
+  - Actionable suggestions for improvement
+- Returns structured summary with metadata (item count, filters applied, generation timestamp)
+- Max 100 feedback items per summary (configurable)
+
+**Integration with File Statistics**:
+- When feedback is submitted on a message, file statistics are automatically updated
+- Tracks: total_uses, total_views, total_likes, total_dislikes
+- File service provides `track_file_view()` and `track_file_usage()` methods
+- Frontend displays file statistics on Files page
+
 ### Service Singleton Pattern
 
 Each service module exports a global singleton instance:
@@ -294,6 +331,7 @@ Each service module exports a global singleton instance:
 - `file_service` (FileService) - initialized with database
 - `user_service` (UserService) - initialized with database
 - `conversation_service` (ConversationService) - initialized in [main.py](CODE/app/main.py) startup
+- `feedback_service` (FeedbackService) - initialized in [main.py](CODE/app/main.py) startup
 
 Routes inject services via FastAPI dependencies ([dependencies.py](CODE/app/api/dependencies.py)).
 
@@ -498,13 +536,31 @@ db.conversations.createIndex({auth0_id: 1, updated_at: -1})
 
 ### Feedback Submission Flow
 
-1. Feedback submitted via `POST /feedback/` → [feedback.py](CODE/app/api/routes/feedback.py)
-2. User authenticated
-3. Verify conversation and message belong to user
-4. Create feedback document in MongoDB
-5. Update file metadata feedback stats (if source files identified)
-6. User statistics incremented (feedback count)
-7. Response returned with confirmation
+**Message Feedback** (`POST /feedback/message`):
+1. User clicks like/dislike on assistant message → [HomePage.jsx](FRONTEND/src/pages/HomePage.jsx)
+2. Optional comment box appears for written feedback
+3. Request sent to `/feedback/message` with rating and optional comment
+4. Backend verifies message ownership
+5. Message feedback field updated in messages collection
+6. If comment provided, separate feedback document created in feedback collection
+7. File statistics updated for all source files (total_likes/total_dislikes)
+8. Response returned with confirmation
+
+**General Feedback** (`POST /feedback/`):
+1. User submits standalone feedback (not tied to message)
+2. Comment text (required) and optional rating sent to backend
+3. Feedback document created in feedback collection
+4. User ID, timestamp, and metadata stored
+5. Response returned with feedback ID
+
+**Admin Feedback Dashboard** (`/admin/feedback`):
+1. Admin navigates to feedback dashboard
+2. Frontend loads feedback list with pagination (`GET /admin/feedback`)
+3. Admin can filter by rating, user, file, date range
+4. Admin can generate AI summary (`POST /admin/feedback/summary`)
+5. LLM analyzes feedback and provides insights (sentiment, themes, suggestions)
+6. Admin can view file-specific feedback (`GET /admin/feedback/file/{filename}`)
+7. Statistics displayed: total feedback, likes/dislikes, comments count
 
 ## Docker Architecture
 

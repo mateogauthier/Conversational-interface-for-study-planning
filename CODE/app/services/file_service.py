@@ -392,6 +392,27 @@ class FileService:
         except Exception as e:
             logger.error(f"Error tracking file usage for {filename}: {str(e)}")
 
+    async def track_file_view(self, filename: str) -> None:
+        """
+        Track that a file was viewed (opened/listed).
+        Increments total_views counter.
+
+        Args:
+            filename: Name of file to track
+        """
+        if self.files_collection is None:
+            logger.warning("Database not available, cannot track file view")
+            return
+
+        try:
+            await self.files_collection.update_one(
+                {"filename": filename},
+                {"$inc": {"feedback_stats.total_views": 1}}
+            )
+            logger.debug(f"Tracked view for file: {filename}")
+        except Exception as e:
+            logger.error(f"Error tracking file view for {filename}: {str(e)}")
+
     async def update_file_feedback(
         self,
         filename: str,

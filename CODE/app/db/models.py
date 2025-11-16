@@ -64,6 +64,7 @@ class FileFeedbackStats(BaseModel):
     """File feedback statistics embedded model."""
 
     total_uses: int = Field(default=0, description="Total times file was used in conversations")
+    total_views: int = Field(default=0, description="Total times file was viewed (opened/listed)")
     total_likes: int = Field(default=0, description="Total likes received")
     total_dislikes: int = Field(default=0, description="Total dislikes received")
     last_used: Optional[datetime] = Field(None, description="Last time file was used")
@@ -132,6 +133,32 @@ class MessageInDB(BaseModel):
     source_files: List[str] = Field(default_factory=list, description="List of source file names used for this response")
     feedback: Optional[Literal["like", "dislike"]] = Field(None, description="User feedback for this message (assistant only)")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata (sources, token count, etc.)")
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={
+            ObjectId: str,
+            datetime: lambda v: v.isoformat()
+        }
+    )
+
+
+class FeedbackInDB(BaseModel):
+    """Feedback document model for MongoDB."""
+
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    user_id: str = Field(..., description="MongoDB user ID (ObjectId as string)")
+    auth0_id: str = Field(..., description="Auth0 user ID for quick lookups")
+    user_email: Optional[str] = Field(None, description="User email for display")
+    message_id: Optional[str] = Field(None, description="Message ID if feedback is tied to a specific message")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID if feedback is tied to a conversation")
+    rating: Optional[Literal["like", "dislike"]] = Field(None, description="Rating (like/dislike)")
+    comment: str = Field(..., description="Written feedback text")
+    files_referenced: List[str] = Field(default_factory=list, description="Files that were referenced in the context")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata (sentiment, category, etc.)")
 
     model_config = ConfigDict(
         populate_by_name=True,

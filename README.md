@@ -26,9 +26,15 @@ A complete study planning system powered by Retrieval-Augmented Generation (RAG)
 - 📊 **Usage Analytics**: Track queries, feedback, and usage patterns
 
 ### Advanced Features
-- 📝 **Feedback System**: Rate responses and provide feedback for quality improvement
+- 📝 **Enhanced Feedback System**:
+  - Like/dislike ratings on assistant responses
+  - Written comments for detailed feedback
+  - Admin dashboard with pagination and filtering
+  - LLM-powered feedback summarization
+  - File-level statistics (views, usage, likes/dislikes)
 - 🗂️ **File Management**: User-specific private files and admin-managed public files
 - 👥 **Admin Dashboard**: Comprehensive admin tools for user and system management
+- 🤖 **AI-Powered Insights**: Automated analysis of student feedback with actionable recommendations
 - 🐳 **Production-Ready**: Docker deployment with MongoDB persistence and GPU support
 
 ### Technical Stack
@@ -221,12 +227,16 @@ Authorization: Bearer <your-auth0-jwt-token>
 ### Feedback
 | Method | Endpoint | Description | Role |
 |--------|----------|-------------|------|
-| `POST` | `/feedback/` | Submit feedback on response | All |
-| `GET` | `/feedback/stats` | Get user's feedback statistics | All |
+| `POST` | `/feedback/message` | Submit like/dislike with optional comment | All |
+| `POST` | `/feedback/` | Submit general feedback | All |
 
 ### Admin Endpoints
 | Method | Endpoint | Description | Role |
 |--------|----------|-------------|------|
+| `GET` | `/admin/feedback` | List all feedback (paginated, filtered) | Admin |
+| `GET` | `/admin/feedback/stats` | Get aggregated feedback statistics | Admin |
+| `POST` | `/admin/feedback/summary` | Generate LLM summary of feedback | Admin |
+| `GET` | `/admin/feedback/file/{filename}` | Get feedback for specific file | Admin |
 | `GET` | `/admin/users` | List all users | Admin |
 | `GET` | `/admin/users/{id}` | Get user details | Admin |
 | `GET` | `/admin/users/{id}/stats` | Get user statistics | Admin |
@@ -291,18 +301,74 @@ curl -X GET "http://localhost:8000/users/me" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### Submit Feedback
+### Submit Feedback on Message
 
 ```bash
+# Submit like/dislike with optional comment
+curl -X POST "http://localhost:8000/feedback/message" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message_id": "507f1f77bcf86cd799439012",
+    "feedback": "like",
+    "comment": "Very helpful answer! This addressed my question perfectly."
+  }'
+```
+
+### Submit General Feedback
+
+```bash
+# Submit standalone feedback
 curl -X POST "http://localhost:8000/feedback/" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "conversation_id": "507f1f77bcf86cd799439011",
-    "message_id": "507f1f77bcf86cd799439012",
-    "rating": 5,
-    "comment": "Very helpful answer!"
+    "comment": "The system is great but could use better error messages",
+    "rating": "dislike"
   }'
+```
+
+### Get Admin Feedback Statistics
+
+```bash
+curl -X GET "http://localhost:8000/admin/feedback/stats" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "total_feedback": 127,
+  "total_likes": 98,
+  "total_dislikes": 29,
+  "total_with_comments": 45,
+  "top_users": [...],
+  "top_files": [...],
+  "recent_feedback": [...]
+}
+```
+
+### Generate Feedback Summary
+
+```bash
+# Generate AI summary of feedback (filtered by rating)
+curl -X POST "http://localhost:8000/admin/feedback/summary?rating=dislike&max_items=50" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "summary": "**Overall Sentiment**: Mixed with concerns...\n\n**Key Themes**:\n1. Response accuracy...\n2. Speed of responses...\n\n**Actionable Suggestions**:\n- Improve context retrieval...",
+  "item_count": 29,
+  "generated_at": "2025-01-15T10:30:00Z",
+  "filters_applied": {
+    "rating": "dislike",
+    "max_items": 50
+  }
+}
 ```
 
 ## Docker Architecture

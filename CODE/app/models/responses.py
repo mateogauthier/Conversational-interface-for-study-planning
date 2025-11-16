@@ -33,6 +33,7 @@ class LLMResponse(BaseResponse):
 class FileFeedbackStatsResponse(BaseModel):
     """File feedback statistics response model."""
     total_uses: int = Field(..., description="Total times file was used")
+    total_views: int = Field(default=0, description="Total times file was viewed")
     total_likes: int = Field(..., description="Total likes received")
     total_dislikes: int = Field(..., description="Total dislikes received")
     last_used: Optional[str] = Field(None, description="Last time file was used (ISO format)")
@@ -146,3 +147,50 @@ class ConversationDetailResponse(BaseResponse):
     """Detailed conversation with messages response."""
     conversation: ConversationInfo = Field(..., description="Conversation information")
     messages: List[MessageInfo] = Field(..., description="List of messages in conversation")
+
+
+class FeedbackItem(BaseModel):
+    """Individual feedback item."""
+    id: str = Field(..., description="Feedback ID", alias="_id")
+    user_id: str = Field(..., description="User MongoDB ID")
+    auth0_id: str = Field(..., description="User Auth0 ID")
+    user_email: Optional[str] = Field(None, description="User email")
+    message_id: Optional[str] = Field(None, description="Associated message ID")
+    conversation_id: Optional[str] = Field(None, description="Associated conversation ID")
+    rating: Optional[str] = Field(None, description="Rating (like/dislike)")
+    comment: str = Field(..., description="Feedback text")
+    files_referenced: List[str] = Field(default_factory=list, description="Files referenced")
+    created_at: str = Field(..., description="Creation timestamp (ISO format)")
+    updated_at: str = Field(..., description="Last update timestamp (ISO format)")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class FeedbackListResponse(BaseResponse):
+    """Paginated list of feedback."""
+    items: List[FeedbackItem] = Field(..., description="Feedback items")
+    total: int = Field(..., description="Total number of feedback items")
+    skip: int = Field(..., description="Number of items skipped")
+    limit: int = Field(..., description="Maximum items per page")
+    page: int = Field(..., description="Current page number")
+    pages: int = Field(..., description="Total number of pages")
+
+
+class FeedbackStatsResponse(BaseResponse):
+    """Aggregated feedback statistics."""
+    total_feedback: int = Field(..., description="Total feedback count")
+    total_likes: int = Field(..., description="Total likes")
+    total_dislikes: int = Field(..., description="Total dislikes")
+    total_neutral: int = Field(..., description="Total neutral feedback")
+    total_with_comments: int = Field(..., description="Feedback with written comments")
+    top_users: List[Dict[str, Any]] = Field(..., description="Top users by feedback count")
+    top_files: List[Dict[str, Any]] = Field(..., description="Top files by feedback count")
+    recent_feedback: List[FeedbackItem] = Field(..., description="Recent feedback items")
+
+
+class FeedbackSummaryResponse(BaseResponse):
+    """LLM-generated summary of feedback."""
+    summary: str = Field(..., description="Generated summary text")
+    item_count: int = Field(..., description="Number of feedback items summarized")
+    generated_at: str = Field(..., description="Summary generation timestamp (ISO format)")
+    filters_applied: Dict[str, Any] = Field(..., description="Filters used for summary")

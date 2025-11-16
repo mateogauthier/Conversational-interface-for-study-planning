@@ -161,6 +161,46 @@ const resources = {
       chunks: {
         chunk: 'chunk',
         chunks: 'chunks'
+      },
+
+      // Admin Feedback Page
+      feedback: {
+        title: 'Student Feedback Dashboard',
+        subtitle: 'View and analyze student feedback to improve the system',
+        totalFeedback: 'Total Feedback',
+        positiveFeedback: 'Positive Feedback',
+        negativeFeedback: 'Negative Feedback',
+        withComments: 'With Comments',
+        showFilters: 'Show Filters',
+        hideFilters: 'Hide Filters',
+        generateSummary: 'Generate AI Summary',
+        generating: 'Generating...',
+        rating: 'Rating',
+        all: 'All',
+        like: 'Like',
+        dislike: 'Dislike',
+        userId: 'User ID',
+        filterByUser: 'Filter by user...',
+        filename: 'Filename',
+        filterByFile: 'Filter by file...',
+        startDate: 'Start Date',
+        endDate: 'End Date',
+        clearFilters: 'Clear Filters',
+        aiSummary: 'AI-Generated Summary',
+        basedOn: 'Based on',
+        items: 'feedback items',
+        generated: 'Generated',
+        feedbackList: 'Feedback',
+        loading: 'Loading feedback...',
+        noFeedback: 'No feedback found',
+        showing: 'Showing',
+        of: 'of',
+        page: 'Page',
+        previous: 'Previous',
+        next: 'Next',
+        filesReferenced: 'Files Referenced',
+        messageId: 'Message ID',
+        conversation: 'Conversation'
       }
     }
   },
@@ -323,6 +363,46 @@ const resources = {
       chunks: {
         chunk: 'fragmento',
         chunks: 'fragmentos'
+      },
+
+      // Admin Feedback Page
+      feedback: {
+        title: 'Panel de Comentarios de Estudiantes',
+        subtitle: 'Ver y analizar comentarios de estudiantes para mejorar el sistema',
+        totalFeedback: 'Total de Comentarios',
+        positiveFeedback: 'Comentarios Positivos',
+        negativeFeedback: 'Comentarios Negativos',
+        withComments: 'Con Comentarios',
+        showFilters: 'Mostrar Filtros',
+        hideFilters: 'Ocultar Filtros',
+        generateSummary: 'Generar Resumen IA',
+        generating: 'Generando...',
+        rating: 'Calificación',
+        all: 'Todos',
+        like: 'Me gusta',
+        dislike: 'No me gusta',
+        userId: 'ID de Usuario',
+        filterByUser: 'Filtrar por usuario...',
+        filename: 'Nombre de archivo',
+        filterByFile: 'Filtrar por archivo...',
+        startDate: 'Fecha de Inicio',
+        endDate: 'Fecha de Fin',
+        clearFilters: 'Limpiar Filtros',
+        aiSummary: 'Resumen Generado por IA',
+        basedOn: 'Basado en',
+        items: 'comentarios',
+        generated: 'Generado',
+        feedbackList: 'Comentarios',
+        loading: 'Cargando comentarios...',
+        noFeedback: 'No se encontraron comentarios',
+        showing: 'Mostrando',
+        of: 'de',
+        page: 'Página',
+        previous: 'Anterior',
+        next: 'Siguiente',
+        filesReferenced: 'Archivos Referenciados',
+        messageId: 'ID de Mensaje',
+        conversation: 'Conversación'
       }
     }
   }
