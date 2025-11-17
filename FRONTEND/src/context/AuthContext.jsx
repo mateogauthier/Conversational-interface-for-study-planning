@@ -23,6 +23,8 @@ export const AuthProvider = ({ children }) => {
 
   const [accessToken, setAccessToken] = useState(null);
   const [tokenLoading, setTokenLoading] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   // Get access token when authenticated
   useEffect(() => {
@@ -52,6 +54,37 @@ export const AuthProvider = ({ children }) => {
     getToken();
   }, [isAuthenticated, getAccessTokenSilently]);
 
+  // Fetch user profile from backend when we have a token
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (accessToken && !profileLoading && !userProfile) {
+        console.log('👤 Fetching user profile from backend...');
+        setProfileLoading(true);
+        try {
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/users/me`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          });
+
+          if (response.ok) {
+            const profile = await response.json();
+            console.log('✅ User profile retrieved:', profile);
+            setUserProfile(profile);
+          } else {
+            console.error('❌ Failed to fetch user profile:', response.status);
+          }
+        } catch (error) {
+          console.error('❌ Error fetching user profile:', error);
+        } finally {
+          setProfileLoading(false);
+        }
+      }
+    };
+
+    fetchUserProfile();
+  }, [accessToken, profileLoading, userProfile]);
+
   const login = async () => {
     await loginWithRedirect({
       authorizationParams: {
@@ -68,12 +101,14 @@ export const AuthProvider = ({ children }) => {
       }
     });
     setAccessToken(null);
+    setUserProfile(null);
   };
 
   const value = {
     user,
+    userProfile,
     isAuthenticated,
-    isLoading: isLoading || tokenLoading,
+    isLoading: isLoading || tokenLoading || profileLoading,
     accessToken,
     login,
     logout: handleLogout,

@@ -3,6 +3,7 @@ import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp,
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { ragApi, llmApi, conversationApi, feedbackApi } from '../services/api';
+import ReactMarkdown from 'react-markdown';
 
 function HomePage() {
   const { t } = useTranslation();
@@ -473,7 +474,7 @@ function ChatMessage({ message }) {
   return (
     <div className={`chat-message ${message.type}`} style={{ marginBottom: '1rem' }}>
       <div className="chat-message-content">
-        {message.content}
+        <ReactMarkdown>{message.content}</ReactMarkdown>
       </div>
 
       {message.sources && message.sources.length > 0 && (

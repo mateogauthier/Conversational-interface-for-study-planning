@@ -7,9 +7,12 @@ import './Header.css';
 
 function Header() {
   const { t } = useTranslation();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, userProfile, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Check if user is admin
+  const isAdmin = userProfile?.role === 'admin';
 
   const handleProfileClick = () => {
     navigate('/profile');
@@ -51,13 +54,15 @@ function Header() {
             <FolderOpen size={18} />
             <span>{t('nav.files')}</span>
           </NavLink>
-          <NavLink
-            to="/admin/feedback"
-            className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
-          >
-            <MessageSquare size={18} />
-            <span>Feedback</span>
-          </NavLink>
+          {isAdmin && (
+            <NavLink
+              to="/admin/feedback"
+              className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <MessageSquare size={18} />
+              <span>Feedback</span>
+            </NavLink>
+          )}
           <NavLink
             to="/settings"
             className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
@@ -135,14 +140,16 @@ function Header() {
                 <FolderOpen size={20} />
                 <span>{t('nav.files')}</span>
               </NavLink>
-              <NavLink
-                to="/admin/feedback"
-                className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
-                onClick={closeMobileMenu}
-              >
-                <MessageSquare size={20} />
-                <span>Feedback</span>
-              </NavLink>
+              {isAdmin && (
+                <NavLink
+                  to="/admin/feedback"
+                  className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+                  onClick={closeMobileMenu}
+                >
+                  <MessageSquare size={20} />
+                  <span>Feedback</span>
+                </NavLink>
+              )}
               <NavLink
                 to="/settings"
                 className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
