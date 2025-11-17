@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { ragApi, llmApi, conversationApi, feedbackApi } from '../services/api';
+import { ragApi, llmApi, conversationApi, feedbackApi, fileApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 
 function HomePage() {
@@ -437,6 +437,20 @@ function ChatMessage({ message }) {
   const [showCommentBox, setShowCommentBox] = useState(false);
   const [comment, setComment] = useState('');
   const [pendingFeedback, setPendingFeedback] = useState(null);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+
+  // Format file name helper function
+  const formatFileName = (filename) => {
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+    let formatted = nameWithoutExt.replace(/[-_]/g, ' ');
+    formatted = formatted.split(' ').map(word => {
+      if (word.length === 0) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+    const extMatch = filename.match(/\.[^/.]+$/);
+    const extension = extMatch ? extMatch[0].toUpperCase().replace('.', '') : '';
+    return { display: formatted, extension };
+  };
 
   const handleFeedback = async (newFeedback) => {
     if (submittingFeedback || !message.id) return;
@@ -479,16 +493,66 @@ function ChatMessage({ message }) {
 
       {message.sources && message.sources.length > 0 && (
         <div className="chat-sources">
-          <div className="chat-sources-title">
-            <FileText size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-            {t('home.sources')} ({message.sources.length})
+          <div
+            className="chat-sources-title"
+            style={{
+              cursor: message.sources.length > 1 ? 'pointer' : 'default',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+            onClick={() => message.sources.length > 1 && setSourcesExpanded(!sourcesExpanded)}
+          >
+            <div>
+              <FileText size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+              {t('home.sources')} ({message.sources.length})
+            </div>
+            {message.sources.length > 1 && (
+              sourcesExpanded ?
+                <ChevronUp size={16} style={{ color: '#718096' }} /> :
+                <ChevronDown size={16} style={{ color: '#718096' }} />
+            )}
           </div>
           <div className="chat-sources-list">
-            {message.sources.map((source, idx) => (
-              <span key={idx} className="source-badge">
-                {source}
-              </span>
-            ))}
+            {(sourcesExpanded ? message.sources : message.sources.slice(0, 1)).map((source, idx) => {
+              const formatted = formatFileName(source);
+              return (
+                <button
+                  key={idx}
+                  className="source-badge"
+                  onClick={() => fileApi.download(source)}
+                  title={t('home.downloadSource') || 'Click to download'}
+                  style={{
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    transition: 'all 0.2s',
+                    padding: '0.375rem 0.625rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#cbd5e0';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#e2e8f0';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  <Download size={12} />
+                  <span style={{ fontWeight: '500' }}>{formatted.display}</span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    backgroundColor: '#cbd5e0',
+                    padding: '0.125rem 0.25rem',
+                    borderRadius: '3px',
+                    fontWeight: '600'
+                  }}>
+                    {formatted.extension}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

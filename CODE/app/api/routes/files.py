@@ -1,7 +1,9 @@
 """File management API routes with authentication."""
 
 import logging
+import os
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi.responses import FileResponse
 from typing import List
 
 from app.api.dependencies import (
@@ -193,6 +195,51 @@ async def get_file_details(
     except Exception as e:
         logger.error(f"Error getting file details: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting file details: {str(e)}")
+
+
+@router.get("/{filename}/download")
+async def download_file(
+    filename: str,
+    current_user: UserInDB = Depends(get_current_user),
+    file_service: FileService = Depends(get_file_service)
+):
+    """Download a file (if user has access)."""
+    try:
+        # Check if user can access this file
+        can_access = await file_service.can_user_access_file(filename, current_user)
+
+        if not can_access:
+            raise ForbiddenHTTPException("You do not have permission to download this file")
+
+        # Get file metadata to ensure it exists
+        file_metadata = await file_service.get_file_metadata_by_name(filename)
+
+        if not file_metadata:
+            raise FileNotFoundHTTPException(filename)
+
+        # Get the file path
+        settings = get_settings()
+        file_path = os.path.join(settings.upload_dir, filename)
+
+        if not os.path.exists(file_path):
+            logger.error(f"File {filename} exists in DB but not on disk at {file_path}")
+            raise FileNotFoundHTTPException(f"File {filename} not found on disk")
+
+        # Track file view
+        await file_service.track_file_view(filename)
+
+        # Return file as download
+        return FileResponse(
+            path=file_path,
+            filename=filename,
+            media_type='application/octet-stream'
+        )
+
+    except (FileNotFoundHTTPException, ForbiddenHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
 
 @router.delete("/{filename}", response_model=BaseResponse)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Files, Trash2, RefreshCw, File, CheckCircle, XCircle, Upload, AlertCircle, Loader, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Files, Trash2, RefreshCw, File, CheckCircle, XCircle, Upload, AlertCircle, Loader, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { fileApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,7 @@ function FilesPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [downloading, setDownloading] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
 
   // Tab and pagination state
@@ -68,7 +69,10 @@ function FilesPage() {
   };
 
   const handleDelete = async (filename) => {
-    if (!confirm(`${t('files.deleteConfirm')} "${filename}"?`)) {
+    const formatted = formatFileName(filename);
+    const displayName = `${formatted.display} (${formatted.extension})`;
+
+    if (!confirm(`${t('files.deleteConfirm')} "${displayName}"?`)) {
       return;
     }
 
@@ -77,16 +81,30 @@ function FilesPage() {
       await fileApi.delete(filename);
       setMessage({
         type: 'success',
-        text: `"${filename}" ${t('files.deleteSuccess')}`,
+        text: `"${displayName}" ${t('files.deleteSuccess')}`,
       });
       await loadFiles();
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error.response?.data?.detail || `${t('files.deleteError')} "${filename}".`,
+        text: error.response?.data?.detail || `${t('files.deleteError')} "${displayName}".`,
       });
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleDownload = async (filename) => {
+    try {
+      setDownloading(filename);
+      await fileApi.download(filename);
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.detail || t('files.downloadError') || `Error downloading "${filename}".`,
+      });
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -169,6 +187,29 @@ function FilesPage() {
   const formatDate = (dateString) => {
     // API returns ISO datetime string, not Unix timestamp
     return new Date(dateString).toLocaleString();
+  };
+
+  const formatFileName = (filename) => {
+    // Remove file extension
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+
+    // Replace hyphens and underscores with spaces
+    let formatted = nameWithoutExt.replace(/[-_]/g, ' ');
+
+    // Capitalize first letter of each word
+    formatted = formatted.split(' ').map(word => {
+      if (word.length === 0) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+
+    // Get file extension
+    const extMatch = filename.match(/\.[^/.]+$/);
+    const extension = extMatch ? extMatch[0] : '';
+
+    return {
+      display: formatted,
+      extension: extension.toUpperCase().replace('.', '')
+    };
   };
 
   // Check if user can delete a file
@@ -412,12 +453,26 @@ function FilesPage() {
             </div>
 
             <div className="file-list">
-              {paginatedFiles.map((file) => (
+              {paginatedFiles.map((file) => {
+                const formattedName = formatFileName(file.filename);
+                return (
                 <div key={file.filename} className="file-item">
                   <div className="file-info">
                     <div className="file-name">
                       <File size={18} style={{ display: 'inline', marginRight: '0.5rem' }} />
-                      {file.filename}
+                      <span>{formattedName.display}</span>
+                      <span style={{
+                        marginLeft: '0.5rem',
+                        padding: '0.125rem 0.375rem',
+                        backgroundColor: '#e2e8f0',
+                        color: '#4a5568',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        textTransform: 'uppercase'
+                      }}>
+                        {formattedName.extension}
+                      </span>
                     </div>
                     <div className="file-meta">
                       {formatFileSize(file.file_size)} • {file.chunk_count} {file.chunk_count === 1 ? 'chunk' : 'chunks'} •
@@ -444,6 +499,21 @@ function FilesPage() {
                   </div>
 
                   <div className="file-actions">
+                    <button
+                      onClick={() => handleDownload(file.filename)}
+                      className="btn btn-primary"
+                      disabled={downloading === file.filename}
+                      style={{ padding: '0.5rem 1rem', marginRight: '0.5rem' }}
+                    >
+                      {downloading === file.filename ? (
+                        <Loader size={16} className="spinner" />
+                      ) : (
+                        <>
+                          <Download size={16} />
+                          {t('files.download') || 'Download'}
+                        </>
+                      )}
+                    </button>
                     {canDeleteFile(file) && (
                       <button
                         onClick={() => handleDelete(file.filename)}
@@ -463,7 +533,8 @@ function FilesPage() {
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
 
             {/* Pagination Controls */}

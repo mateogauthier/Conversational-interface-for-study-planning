@@ -83,6 +83,23 @@ export const fileApi = {
     return response.data;
   },
 
+  // Download a file
+  download: async (filename) => {
+    const response = await api.get(`/files/${encodeURIComponent(filename)}/download`, {
+      responseType: 'blob',
+    });
+
+    // Create a blob URL and trigger download
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
   // Get supported extensions
   getSupportedExtensions: async () => {
     const response = await api.get('/files/supported/extensions');
