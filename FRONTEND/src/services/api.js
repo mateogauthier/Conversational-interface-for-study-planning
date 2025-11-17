@@ -243,7 +243,7 @@ export const adminFeedbackApi = {
 
   // Generate LLM summary of feedback
   generateSummary: async (params = {}) => {
-    const { rating, user_id, filename, start_date, end_date, max_items = 100 } = params;
+    const { rating, user_id, filename, start_date, end_date, max_items = 100, language = 'en' } = params;
     const queryParams = new URLSearchParams();
     if (rating) queryParams.append('rating', rating);
     if (user_id) queryParams.append('user_id', user_id);
@@ -251,6 +251,7 @@ export const adminFeedbackApi = {
     if (start_date) queryParams.append('start_date', start_date);
     if (end_date) queryParams.append('end_date', end_date);
     queryParams.append('max_items', max_items);
+    queryParams.append('language', language);
 
     const response = await api.post(`/admin/feedback/summary?${queryParams.toString()}`);
     return response.data;
