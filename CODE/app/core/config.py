@@ -36,6 +36,8 @@ class Settings(BaseSettings):
         default="mongodb://admin:password@mongodb:27017/?authSource=admin"
     )
     mongo_database_name: str = Field(default="study_planning")
+    mongo_max_pool_size: int = Field(default=50)  # Max connections per API instance
+    mongo_min_pool_size: int = Field(default=10)  # Min connections to maintain
 
     # Role Configuration
     admin_role: str = "admin"
@@ -53,7 +55,10 @@ class Settings(BaseSettings):
     allowed_extensions: list[str] = [".pdf", ".txt", ".md", ".doc", ".docx", ".xls", ".xlsx"]
 
     # RAG Configuration
+    chromadb_mode: str = Field(default="persistent")  # "persistent" or "client"
     chromadb_path: str = "data/chroma_db"
+    chromadb_host: str = Field(default="chromadb-server")  # For client mode
+    chromadb_port: int = Field(default=8000)  # For client mode
     collection_name: str = "study_documents"
     embedding_model: str = "all-MiniLM-L6-v2"
     chunk_size: int = 1000

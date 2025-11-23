@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.services.file_service import FileService, get_file_service_instance
 from app.services.llm_service import LLMService, llm_service
-from app.services.rag_service import RAGService, rag_service
+from app.services.rag_service import RAGService, get_rag_service_instance
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.user_service import UserService, get_user_service
 from app.services.conversation_service import ConversationService, get_conversation_service
@@ -45,9 +45,9 @@ def get_llm_service() -> LLMService:
     return llm_service
 
 
-def get_rag_service() -> RAGService:
+def get_rag_service() -> Optional[RAGService]:
     """Get RAG service dependency."""
-    return rag_service
+    return get_rag_service_instance()
 
 
 def get_app_settings() -> Settings:

@@ -11,6 +11,8 @@ from app.models.responses import APIInfoResponse, HealthResponse
 from app.db.database import mongodb
 from app.services import conversation_service as conv_service_module
 from app.services import feedback_service as feedback_service_module
+from app.services import rag_service as rag_service_module
+from app.services.file_service import get_file_service_instance
 
 # Configure logging
 logging.basicConfig(
@@ -78,6 +80,11 @@ async def startup_event():
         # Initialize feedback service with database
         feedback_service_module.feedback_service = feedback_service_module.FeedbackService(db)
         logger.info("Feedback service initialized")
+
+        # Initialize RAG service with file_service
+        file_service = get_file_service_instance(db)
+        rag_service_module.rag_service = rag_service_module.RAGService(file_service=file_service)
+        logger.info("RAG service initialized with file_service")
 
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")

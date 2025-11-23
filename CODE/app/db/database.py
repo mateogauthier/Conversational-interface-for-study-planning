@@ -21,12 +21,20 @@ class MongoDB:
         """Connect to MongoDB."""
         settings = get_settings()
         try:
-            self.client = AsyncIOMotorClient(settings.mongo_uri)
+            self.client = AsyncIOMotorClient(
+                settings.mongo_uri,
+                maxPoolSize=settings.mongo_max_pool_size,
+                minPoolSize=settings.mongo_min_pool_size,
+                serverSelectionTimeoutMS=5000
+            )
             self.database = self.client[settings.mongo_database_name]
 
             # Verify connection
             await self.client.admin.command('ping')
-            logger.info(f"Successfully connected to MongoDB database: {settings.mongo_database_name}")
+            logger.info(
+                f"Successfully connected to MongoDB database: {settings.mongo_database_name} "
+                f"(pool size: {settings.mongo_min_pool_size}-{settings.mongo_max_pool_size})"
+            )
 
         except ConnectionFailure as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
