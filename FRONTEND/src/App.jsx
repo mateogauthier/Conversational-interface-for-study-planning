@@ -15,6 +15,7 @@ import FilesPage from './pages/FilesPage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminFeedbackPage from './pages/AdminFeedbackPage';
+import StatsPage from './pages/StatsPage';
 
 function MainContent() {
   const location = useLocation();
@@ -29,6 +30,7 @@ function MainContent() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
+        <Route path="/admin/stats" element={<StatsPage />} />
       </Routes>
     </main>
   );

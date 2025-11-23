@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, FolderOpen, Settings, LogOut, User, Menu, X, MessageSquare } from 'lucide-react';
+import { Home, FolderOpen, Settings, LogOut, User, Menu, X, MessageSquare, BarChart3 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import './Header.css';
@@ -146,14 +146,24 @@ function Header() {
                 <span>{t('nav.files')}</span>
               </NavLink>
               {isAdmin && (
-                <NavLink
-                  to="/admin/feedback"
-                  className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
-                  onClick={closeMobileMenu}
-                >
-                  <MessageSquare size={20} />
-                  <span>Feedback</span>
-                </NavLink>
+                <>
+                  <NavLink
+                    to="/admin/feedback"
+                    className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+                    onClick={closeMobileMenu}
+                  >
+                    <MessageSquare size={20} />
+                    <span>Feedback</span>
+                  </NavLink>
+                  <NavLink
+                    to="/admin/stats"
+                    className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+                    onClick={closeMobileMenu}
+                  >
+                    <BarChart3 size={20} />
+                    <span>{t('i18n.language') === 'es' ? 'Estadísticas' : 'Stats'}</span>
+                  </NavLink>
+                </>
               )}
               <NavLink
                 to="/settings"
