@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from fastapi import UploadFile
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorGridFSBucket
+from bson import ObjectId
+import tempfile
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -29,15 +31,13 @@ class FileService:
     """Service for handling file operations with multi-tenancy support."""
 
     def __init__(self, database: Optional[AsyncIOMotorDatabase] = None):
-        self.upload_dir = settings.upload_dir
         self.max_file_size = settings.max_file_size
         self.allowed_extensions = {ext.lower(): self._get_file_type_description(ext)
                                   for ext in settings.allowed_extensions}
         self.database = database
         self.files_collection = database[FILE_METADATA_COLLECTION] if database is not None else None
-
-        # Ensure upload directory exists
-        Path(self.upload_dir).mkdir(parents=True, exist_ok=True)
+        # GridFS bucket for file storage
+        self.fs_bucket = AsyncIOMotorGridFSBucket(database) if database is not None else None
     
     def _get_file_type_description(self, extension: str) -> str:
         """Get human-readable description for file extension."""
@@ -84,7 +84,7 @@ class FileService:
         is_public: bool
     ) -> tuple[str, FileMetadataInDB]:
         """
-        Save an uploaded file with user context and metadata.
+        Save an uploaded file with user context and metadata using GridFS.
 
         Args:
             file: Uploaded file
@@ -92,49 +92,61 @@ class FileService:
             is_public: Whether file is public (admin) or private (student)
 
         Returns:
-            tuple: (file_path, file_metadata)
+            tuple: (gridfs_file_id_str, file_metadata)
         """
         try:
             # Validate file
             self.validate_file(file)
 
-            # Create file path
-            file_path = os.path.join(self.upload_dir, file.filename)
+            if self.fs_bucket is None or self.files_collection is None:
+                raise FileProcessingException("Database not available")
 
-            # Handle file name conflicts
+            # Read file content
+            content = await file.read()
+
+            # Size check after reading
+            if len(content) > self.max_file_size:
+                raise FileTooLargeHTTPException(len(content), self.max_file_size)
+
+            # Handle filename conflicts by checking MongoDB metadata
             actual_filename = file.filename
-            if os.path.exists(file_path):
-                file_path = self._get_unique_filename(file_path)
-                actual_filename = Path(file_path).name
+            counter = 1
+            while await self.files_collection.find_one({"filename": actual_filename}):
+                path = Path(file.filename)
+                actual_filename = f"{path.stem}_{counter}{path.suffix}"
+                counter += 1
 
-            # Save file
-            with open(file_path, "wb") as f:
-                content = file.file.read()
+            # Upload to GridFS with metadata
+            file_id = await self.fs_bucket.upload_from_stream(
+                actual_filename,
+                content,
+                metadata={
+                    "user_id": str(user.id),
+                    "auth0_id": user.auth0_id,
+                    "is_public": is_public,
+                    "file_type": Path(actual_filename).suffix.lower(),
+                    "uploaded_at": datetime.utcnow()
+                }
+            )
 
-                # Additional size check after reading
-                if len(content) > self.max_file_size:
-                    raise FileTooLargeHTTPException(len(content), self.max_file_size)
-
-                f.write(content)
-
-            # Create file metadata
+            # Create file metadata document
             file_metadata = FileMetadataInDB(
                 filename=actual_filename,
                 user_id=str(user.id),
                 auth0_id=user.auth0_id,
                 is_public=is_public,
                 file_size=len(content),
-                file_type=Path(actual_filename).suffix.lower()
+                file_type=Path(actual_filename).suffix.lower(),
+                gridfs_file_id=str(file_id)  # Store GridFS file ID
             )
 
-            # Store in MongoDB
-            if self.files_collection is not None:
-                await self.files_collection.insert_one(
-                    file_metadata.model_dump(by_alias=True, exclude={"id"})
-                )
+            # Store metadata in MongoDB
+            await self.files_collection.insert_one(
+                file_metadata.model_dump(by_alias=True, exclude={"id"})
+            )
 
-            logger.info(f"File saved: {file_path} (user: {user.email}, public: {is_public})")
-            return file_path, file_metadata
+            logger.info(f"File saved to GridFS: {actual_filename} (id: {file_id}, user: {user.email}, public: {is_public})")
+            return str(file_id), file_metadata
 
         except (FileTypeNotSupportedHTTPException, FileTooLargeHTTPException):
             raise
@@ -142,20 +154,63 @@ class FileService:
             logger.error(f"Error saving file: {str(e)}")
             raise FileProcessingException(f"Error saving file: {str(e)}")
     
-    def _get_unique_filename(self, file_path: str) -> str:
-        """Generate a unique filename if the file already exists."""
-        path = Path(file_path)
-        base_name = path.stem
-        extension = path.suffix
-        directory = path.parent
-        
-        counter = 1
-        while os.path.exists(file_path):
-            new_filename = f"{base_name}_{counter}{extension}"
-            file_path = directory / new_filename
-            counter += 1
-        
-        return str(file_path)
+    async def get_file_from_gridfs(self, filename: str) -> Optional[bytes]:
+        """
+        Download file content from GridFS by filename.
+
+        Args:
+            filename: Name of file to retrieve
+
+        Returns:
+            File content as bytes, or None if not found
+        """
+        if self.fs_bucket is None:
+            return None
+
+        try:
+            # Find file metadata to get GridFS ID
+            file_metadata = await self.get_file_metadata_by_name(filename)
+            if not file_metadata or not file_metadata.gridfs_file_id:
+                return None
+
+            # Download from GridFS
+            file_id = ObjectId(file_metadata.gridfs_file_id)
+            grid_out = await self.fs_bucket.open_download_stream(file_id)
+            content = await grid_out.read()
+            return content
+
+        except Exception as e:
+            logger.error(f"Error retrieving file from GridFS: {str(e)}")
+            return None
+
+    async def download_file_to_temp(self, filename: str) -> Optional[str]:
+        """
+        Download file from GridFS to a temporary file.
+        Returns path to temporary file, or None if file not found.
+        Caller is responsible for deleting the temporary file.
+
+        Args:
+            filename: Name of file to download
+
+        Returns:
+            Path to temporary file, or None if not found
+        """
+        content = await self.get_file_from_gridfs(filename)
+        if content is None:
+            return None
+
+        try:
+            # Create temporary file with same extension
+            ext = Path(filename).suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
+                tmp_file.write(content)
+                tmp_path = tmp_file.name
+
+            return tmp_path
+
+        except Exception as e:
+            logger.error(f"Error creating temporary file: {str(e)}")
+            return None
     
     async def list_files(self, user: UserInDB) -> List[FileMetadataInDB]:
         """
@@ -202,40 +257,34 @@ class FileService:
             logger.error(f"Error listing files: {str(e)}")
             raise FileProcessingException(f"Error listing files: {str(e)}")
     
-    def get_file_info(self, filename: str) -> FileInfo:
-        """Get detailed information about a specific file."""
+    async def get_file_info(self, filename: str) -> FileInfo:
+        """Get detailed information about a specific file from GridFS."""
         try:
-            file_path = os.path.join(self.upload_dir, filename)
-            
-            if not os.path.exists(file_path):
+            file_metadata = await self.get_file_metadata_by_name(filename)
+
+            if not file_metadata:
                 raise FileNotFoundHTTPException(filename)
-            
-            return self._get_file_metadata(filename, file_path)
-            
+
+            return FileInfo(
+                filename=filename,
+                file_path=f"gridfs://{file_metadata.gridfs_file_id}",
+                file_type=self.get_file_type(filename),
+                size_bytes=file_metadata.file_size,
+                size_mb=round(file_metadata.file_size / (1024 * 1024), 2),
+                created_at=file_metadata.uploaded_at.timestamp() if file_metadata.uploaded_at else 0,
+                modified_at=file_metadata.uploaded_at.timestamp() if file_metadata.uploaded_at else 0,
+                is_supported=self.is_supported_file(filename)
+            )
+
         except FileNotFoundHTTPException:
             raise
         except Exception as e:
             logger.error(f"Error getting file info: {str(e)}")
             raise FileProcessingException(f"Error getting file info: {str(e)}")
     
-    def _get_file_metadata(self, filename: str, file_path: str) -> FileInfo:
-        """Get file metadata."""
-        file_stat = os.stat(file_path)
-        
-        return FileInfo(
-            filename=filename,
-            file_path=file_path,
-            file_type=self.get_file_type(filename),
-            size_bytes=file_stat.st_size,
-            size_mb=round(file_stat.st_size / (1024 * 1024), 2),
-            created_at=file_stat.st_ctime,
-            modified_at=file_stat.st_mtime,
-            is_supported=self.is_supported_file(filename)
-        )
-    
     async def delete_file(self, filename: str, user: UserInDB) -> bool:
         """
-        Delete a file with permission checking.
+        Delete a file from GridFS with permission checking.
 
         Students can only delete their own private files.
         Admins can only delete public files.
@@ -253,7 +302,7 @@ class FileService:
         """
         try:
             # Get file metadata from MongoDB
-            if self.files_collection is None:
+            if self.files_collection is None or self.fs_bucket is None:
                 raise FileProcessingException("Database not available")
 
             file_metadata = await self.files_collection.find_one({"filename": filename})
@@ -272,16 +321,18 @@ class FileService:
                 if not file_metadata["is_public"]:
                     raise ForbiddenHTTPException("Admins cannot delete student private files")
 
-            # Delete from filesystem
-            file_path = os.path.join(self.upload_dir, filename)
+            # Delete from GridFS
+            if file_metadata.get("gridfs_file_id"):
+                try:
+                    file_id = ObjectId(file_metadata["gridfs_file_id"])
+                    await self.fs_bucket.delete(file_id)
+                except Exception as e:
+                    logger.warning(f"Error deleting from GridFS (may not exist): {str(e)}")
 
-            if os.path.exists(file_path):
-                os.remove(file_path)
-
-            # Delete from MongoDB
+            # Delete metadata from MongoDB
             await self.files_collection.delete_one({"filename": filename})
 
-            logger.info(f"File deleted: {filename} by user {user.email}")
+            logger.info(f"File deleted from GridFS: {filename} by user {user.email}")
             return True
 
         except (FileNotFoundHTTPException, ForbiddenHTTPException):

@@ -58,15 +58,14 @@ async def upload_file(
             is_public=is_public
         )
 
-        # Process the file for RAG
+        # Process the file for RAG (from GridFS)
         chunk_count = 0
         processed_for_rag = False
         try:
-            chunk_count = await rag_service.process_document_async(
-                file_path=file_path,
+            chunk_count = await rag_service.process_document_from_gridfs(
+                filename=file_metadata.filename,
                 user_id=str(current_user.id),
-                is_public=is_public,
-                filename=file_metadata.filename
+                is_public=is_public
             )
             processed_for_rag = chunk_count > 0
 
@@ -89,7 +88,7 @@ async def upload_file(
         return {
             "message": "File uploaded successfully",
             "filename": file_metadata.filename,
-            "file_path": file_path,
+            "gridfs_file_id": file_path,  # This is now the GridFS file ID
             "is_public": is_public,
             "processed_for_rag": processed_for_rag,
             "chunk_count": chunk_count,

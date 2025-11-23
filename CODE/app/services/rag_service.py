@@ -3,7 +3,7 @@
 import os
 import logging
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 from functools import partial
 
@@ -23,26 +23,38 @@ from app.core.exceptions import RAGException
 from app.models.responses import RelevantChunk, RAGStatsResponse
 from app.db.models import UserInDB
 
+if TYPE_CHECKING:
+    from app.services.file_service import FileService
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
 class RAGService:
     """Service for RAG operations."""
-    
-    def __init__(self):
+
+    def __init__(self, file_service: Optional['FileService'] = None):
         self.collection_name = settings.collection_name
         self.chromadb_path = settings.chromadb_path
         self.embedding_model_name = settings.embedding_model
         self.chunk_size = settings.chunk_size
         self.chunk_overlap = settings.chunk_overlap
-        
-        # Initialize ChromaDB
-        self.client = chromadb.PersistentClient(path=self.chromadb_path)
-        
+        self.file_service = file_service
+
+        # Initialize ChromaDB (will be updated to support client mode later)
+        if settings.chromadb_mode == "client":
+            self.client = chromadb.HttpClient(
+                host=settings.chromadb_host,
+                port=settings.chromadb_port
+            )
+            logger.info(f"Connected to ChromaDB server at {settings.chromadb_host}:{settings.chromadb_port}")
+        else:
+            self.client = chromadb.PersistentClient(path=self.chromadb_path)
+            logger.info(f"Using persistent ChromaDB at {self.chromadb_path}")
+
         # Initialize embedding model
         self.embedding_model = SentenceTransformer(self.embedding_model_name)
-        
+
         # Initialize text splitter
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
@@ -50,7 +62,7 @@ class RAGService:
             length_function=len,
             separators=["\n\n", "\n", " ", ""]
         )
-        
+
         # Get or create collection
         self._initialize_collection()
     
@@ -107,6 +119,8 @@ class RAGService:
     ) -> int:
         """
         Process a document and add it to the vector store with user context.
+        NOTE: This method expects a local file path (for backward compatibility).
+        Use process_document_from_gridfs for GridFS files.
 
         Args:
             file_path: Path to the document file
@@ -170,6 +184,54 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error processing document {file_path}: {str(e)}")
             raise RAGException(f"Failed to process document: {str(e)}")
+
+    async def process_document_from_gridfs(
+        self,
+        filename: str,
+        user_id: str,
+        is_public: bool
+    ) -> int:
+        """
+        Process a document from GridFS and add it to the vector store.
+        Downloads file from GridFS to temporary location, processes it, then cleans up.
+
+        Args:
+            filename: Name of file in GridFS
+            user_id: MongoDB user ID (owner)
+            is_public: Whether file is public (admin) or private (student)
+
+        Returns:
+            int: Number of chunks created
+        """
+        if self.file_service is None:
+            raise RAGException("FileService not initialized")
+
+        tmp_path = None
+        try:
+            # Download file from GridFS to temporary file
+            tmp_path = await self.file_service.download_file_to_temp(filename)
+
+            if tmp_path is None:
+                raise RAGException(f"File not found in GridFS: {filename}")
+
+            # Process the temporary file
+            chunk_count = self.process_document(tmp_path, user_id, is_public, filename)
+
+            logger.info(f"Processed {chunk_count} chunks from GridFS file: {filename}")
+            return chunk_count
+
+        except Exception as e:
+            logger.error(f"Error processing document from GridFS {filename}: {str(e)}")
+            raise RAGException(f"Failed to process document: {str(e)}")
+
+        finally:
+            # Clean up temporary file
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                    logger.debug(f"Cleaned up temporary file: {tmp_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temporary file {tmp_path}: {str(e)}")
     
     def retrieve_relevant_chunks(
         self,
@@ -517,5 +579,16 @@ class RAGService:
         )
 
 
-# Global RAG service instance
-rag_service = RAGService()
+# Global RAG service instance (will be initialized in main.py startup)
+rag_service = None
+
+
+def get_rag_service_instance() -> Optional['RAGService']:
+    """
+    Get the global RAG service instance.
+
+    Returns:
+        RAGService instance or None if not initialized
+    """
+    global rag_service
+    return rag_service

@@ -84,6 +84,7 @@ class FileMetadataInDB(BaseModel):
     is_public: bool = Field(..., description="True if file is public (admin), False if private (student)")
     file_size: int = Field(..., description="File size in bytes")
     file_type: str = Field(..., description="File extension")
+    gridfs_file_id: Optional[str] = Field(None, description="GridFS file ID (ObjectId as string)")
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
     processed: bool = Field(default=False, description="Whether file has been processed by RAG")
     chunk_count: int = Field(default=0, description="Number of chunks generated")
