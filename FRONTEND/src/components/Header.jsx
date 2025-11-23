@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { BookOpen, Home, FolderOpen, Settings, LogOut, User, Menu, X, MessageSquare } from 'lucide-react';
+import { Home, FolderOpen, Settings, LogOut, User, Menu, X, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import './Header.css';
@@ -33,7 +33,12 @@ function Header() {
       <div className="header-container">
         {/* Logo/Brand */}
         <div className="header-brand">
-          <BookOpen size={28} className="header-logo-icon" />
+          <img
+            src="/icons/logo.svg"
+            alt="Logo"
+            style={{ width: '32px', height: '32px' }}
+            className="header-logo-icon"
+          />
           <h1 className="header-title">{t('appTitle')}</h1>
         </div>
 

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, LogIn, Loader } from 'lucide-react';
+import { LogIn, Loader } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 function LoginPage() {
@@ -46,8 +46,18 @@ function LoginPage() {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '2rem'
+      width: '100%',
+      backgroundImage: 'url(/backgrounds/login.png)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      padding: '2rem',
+      margin: 0,
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0
     }}>
       <div className="card" style={{
         maxWidth: '500px',
@@ -60,7 +70,11 @@ function LoginPage() {
           justifyContent: 'center',
           marginBottom: '2rem'
         }}>
-          <BookOpen size={64} style={{ color: '#667eea' }} />
+          <img
+            src="/icons/logo.svg"
+            alt="Logo"
+            style={{ width: '80px', height: '80px' }}
+          />
         </div>
 
         <h1 style={{

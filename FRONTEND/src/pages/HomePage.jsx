@@ -66,6 +66,7 @@ function HomePage() {
         model: msg.model_used,
         sources: msg.source_files || [],
         feedback: msg.feedback,
+        isLoadedFromHistory: true, // Mark as loaded from history
         // Note: chunks are not stored in message history
       }));
 
@@ -566,8 +567,8 @@ function ChatMessage({ message }) {
           )}
         </div>
 
-        {/* Feedback buttons for assistant messages */}
-        {message.type === 'assistant' && message.id && !showCommentBox && (
+        {/* Feedback buttons for assistant messages (only for newly received messages, not loaded from history) */}
+        {message.type === 'assistant' && message.id && !message.isLoadedFromHistory && !showCommentBox && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button
               onClick={() => handleFeedback('like')}
@@ -618,11 +619,11 @@ function ChatMessage({ message }) {
         <div style={{
           marginTop: '1rem',
           padding: '1rem',
-          backgroundColor: '#2d3748',
+          backgroundColor: '#f8fafc',
           borderRadius: '0.5rem',
-          border: '1px solid #4a5568',
+          border: '1px solid #e2e8f0',
         }}>
-          <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#a0aec0' }}>
+          <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#4a5568' }}>
             {pendingFeedback === 'like' ? '👍 ' : '👎 '}
             Add a comment (optional)
           </div>
@@ -634,10 +635,10 @@ function ChatMessage({ message }) {
               width: '100%',
               minHeight: '80px',
               padding: '0.5rem',
-              backgroundColor: '#1a202c',
-              border: '1px solid #4a5568',
+              backgroundColor: '#ffffff',
+              border: '1px solid #cbd5e0',
               borderRadius: '0.25rem',
-              color: '#e2e8f0',
+              color: '#2d3748',
               fontSize: '0.875rem',
               resize: 'vertical',
               fontFamily: 'inherit',
@@ -665,9 +666,9 @@ function ChatMessage({ message }) {
               disabled={submittingFeedback}
               style={{
                 padding: '0.5rem 1rem',
-                backgroundColor: 'transparent',
-                color: '#a0aec0',
-                border: '1px solid #4a5568',
+                backgroundColor: '#ffffff',
+                color: '#718096',
+                border: '1px solid #cbd5e0',
                 borderRadius: '0.25rem',
                 cursor: submittingFeedback ? 'not-allowed' : 'pointer',
                 fontSize: '0.875rem',
