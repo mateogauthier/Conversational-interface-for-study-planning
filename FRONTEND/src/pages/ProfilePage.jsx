@@ -5,11 +5,13 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
 function ProfilePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user: authUser, isLoading: authLoading, accessToken } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const isSpanish = i18n.language === 'es';
 
   useEffect(() => {
     if (!authLoading && accessToken) {
@@ -25,14 +27,14 @@ function ProfilePage() {
       setProfile(response.data);
     } catch (err) {
       console.error('Failed to load profile:', err);
-      setError('Failed to load profile data');
+      setError(t('profile.loadError'));
     } finally {
       setLoading(false);
     }
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString(undefined, {
+    return new Date(dateString).toLocaleDateString(isSpanish ? 'es-ES' : 'en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -41,7 +43,7 @@ function ProfilePage() {
 
   const formatDateTime = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString();
+    return new Date(dateString).toLocaleString(isSpanish ? 'es-ES' : 'en-US');
   };
 
   const formatFileSize = (bytes) => {
@@ -70,7 +72,7 @@ function ProfilePage() {
   }
 
   if (loading) {
-    return <div className="spinner"></div>;
+    return <img src="/icons/loader.svg" alt="Loading" className="spinner" />;
   }
 
   if (error) {
@@ -79,7 +81,7 @@ function ProfilePage() {
         <div style={{ textAlign: 'center', padding: '2rem', color: '#f56565' }}>
           <p>{error}</p>
           <button onClick={loadProfile} className="btn btn-primary" style={{ marginTop: '1rem' }}>
-            Retry
+            {t('profile.retry')}
           </button>
         </div>
       </div>
@@ -90,7 +92,7 @@ function ProfilePage() {
     return (
       <div className="card">
         <div style={{ textAlign: 'center', padding: '2rem', color: '#a0aec0' }}>
-          <p>No profile data available</p>
+          <p>{t('profile.noProfile')}</p>
         </div>
       </div>
     );
@@ -130,17 +132,16 @@ function ProfilePage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#4a5568' }}>
                 <Shield size={18} />
                 <span style={{
-                  textTransform: 'capitalize',
                   fontWeight: 600,
                   color: profile.role === 'admin' ? '#667eea' : '#48bb78'
                 }}>
-                  {profile.role}
+                  {profile.role === 'admin' ? t('profile.admin') : t('profile.student')}
                 </span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#4a5568' }}>
                 <Calendar size={18} />
-                <span>Member since {formatDate(profile.created_at)}</span>
+                <span>{t('profile.memberSince')} {formatDate(profile.created_at)}</span>
               </div>
             </div>
           </div>
@@ -170,7 +171,7 @@ function ProfilePage() {
             </div>
             <div>
               <p style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.9)', margin: 0 }}>
-                Total Uploads
+                {t('profile.totalUploads')}
               </p>
               <p style={{ fontSize: '2rem', fontWeight: 700, color: 'white', margin: 0 }}>
                 {profile.statistics.total_uploads}
@@ -195,7 +196,7 @@ function ProfilePage() {
             </div>
             <div>
               <p style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.9)', margin: 0 }}>
-                Total Queries
+                {t('profile.totalQueries')}
               </p>
               <p style={{ fontSize: '2rem', fontWeight: 700, color: 'white', margin: 0 }}>
                 {profile.statistics.total_queries}
@@ -220,7 +221,7 @@ function ProfilePage() {
             </div>
             <div>
               <p style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.9)', margin: 0 }}>
-                Storage Used
+                {t('profile.storageUsed')}
               </p>
               <p style={{ fontSize: '2rem', fontWeight: 700, color: 'white', margin: 0 }}>
                 {formatFileSize(profile.statistics.total_storage_bytes)}
@@ -234,7 +235,7 @@ function ProfilePage() {
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h2 className="card-title">
           <Activity size={28} />
-          Activity Information
+          {t('profile.activityInfo')}
         </h2>
 
         <div style={{ display: 'grid', gap: '1.5rem' }}>
@@ -247,7 +248,7 @@ function ProfilePage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
               <div>
                 <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '0.5rem' }}>
-                  Last Activity
+                  {t('profile.lastActivity')}
                 </p>
                 <p style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', margin: 0 }}>
                   {formatDateTime(profile.statistics.last_activity)}
@@ -256,7 +257,7 @@ function ProfilePage() {
 
               <div>
                 <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '0.5rem' }}>
-                  Account Created
+                  {t('profile.accountCreated')}
                 </p>
                 <p style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', margin: 0 }}>
                   {formatDateTime(profile.created_at)}
@@ -265,7 +266,7 @@ function ProfilePage() {
 
               <div>
                 <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '0.5rem' }}>
-                  Last Updated
+                  {t('profile.lastUpdated')}
                 </p>
                 <p style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', margin: 0 }}>
                   {formatDateTime(profile.updated_at)}
@@ -280,7 +281,7 @@ function ProfilePage() {
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h2 className="card-title">
           <Shield size={28} />
-          Account Details
+          {t('profile.accountDetails')}
         </h2>
 
         <div style={{ display: 'grid', gap: '1rem' }}>
@@ -292,7 +293,7 @@ function ProfilePage() {
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <span style={{ color: '#718096', fontSize: '0.875rem' }}>User ID</span>
+            <span style={{ color: '#718096', fontSize: '0.875rem' }}>{t('profile.userId')}</span>
             <span style={{ fontFamily: 'monospace', color: '#4a5568', fontSize: '0.875rem' }}>
               {profile.id}
             </span>
@@ -306,7 +307,7 @@ function ProfilePage() {
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <span style={{ color: '#718096', fontSize: '0.875rem' }}>Auth0 ID</span>
+            <span style={{ color: '#718096', fontSize: '0.875rem' }}>{t('profile.auth0Id')}</span>
             <span style={{ fontFamily: 'monospace', color: '#4a5568', fontSize: '0.875rem' }}>
               {profile.auth0_id}
             </span>

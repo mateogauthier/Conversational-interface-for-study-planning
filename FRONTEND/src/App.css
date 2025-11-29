@@ -237,6 +237,14 @@ body {
 
 /* Loading Spinner */
 .spinner {
+  width: 80px;
+  height: 80px;
+  margin: 2rem auto;
+  display: block;
+}
+
+/* Legacy CSS spinner for backwards compatibility */
+.spinner-legacy {
   border: 3px solid #f3f4f6;
   border-top: 3px solid #667eea;
   border-radius: 50%;

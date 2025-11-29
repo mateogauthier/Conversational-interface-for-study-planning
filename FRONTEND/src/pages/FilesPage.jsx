@@ -430,7 +430,7 @@ function FilesPage() {
         </div>
 
         {loading ? (
-          <div className="spinner"></div>
+          <img src="/icons/loader.svg" alt="Loading" className="spinner" />
         ) : filteredFiles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#a0aec0' }}>
             <File size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, TrendingUp, TrendingDown, Database } from 'lucide-react';
+import { Users, TrendingUp, TrendingDown, Database, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import './StatsPage.css';
@@ -36,14 +36,16 @@ function StatsPage() {
       const feedbackResponse = await api.get('/admin/feedback/stats');
       const topFiles = feedbackResponse.data.top_files || [];
 
-      // Sort files by likes (top 5)
+      // Sort files by likes (top 5, only with likes > 0)
       const sortedByLikes = [...topFiles]
+        .filter(file => file.likes > 0)
         .sort((a, b) => b.likes - a.likes)
         .slice(0, 5);
       setTopLikedFiles(sortedByLikes);
 
-      // Sort files by dislikes (top 5)
+      // Sort files by dislikes (top 5, only with dislikes > 0)
       const sortedByDislikes = [...topFiles]
+        .filter(file => file.dislikes > 0)
         .sort((a, b) => b.dislikes - a.dislikes)
         .slice(0, 5);
       setTopDislikedFiles(sortedByDislikes);
@@ -82,7 +84,7 @@ function StatsPage() {
     return (
       <div className="stats-page">
         <div className="stats-loading">
-          <div className="loading-spinner"></div>
+          <img src="/icons/loader.svg" alt="Loading" className="loading-spinner" />
           <p>{isSpanish ? 'Cargando estadísticas...' : 'Loading statistics...'}</p>
         </div>
       </div>
@@ -109,9 +111,6 @@ function StatsPage() {
           <Database size={32} />
           <h1>{isSpanish ? 'Estadísticas del Sistema' : 'System Statistics'}</h1>
         </div>
-        <button onClick={fetchData} className="refresh-button">
-          {isSpanish ? 'Actualizar' : 'Refresh'}
-        </button>
       </div>
 
       {/* System Overview Cards */}
@@ -216,7 +215,9 @@ function StatsPage() {
               <ul className="file-list">
                 {topLikedFiles.map((file, index) => (
                   <li key={file._id || index} className="file-item">
-                    <div className="file-rank">{index + 1}</div>
+                    <div className="file-rank">
+                      <FileText size={20} />
+                    </div>
                     <div className="file-info">
                       <div className="file-name">{file._id}</div>
                       <div className="file-stats-row">
@@ -253,7 +254,9 @@ function StatsPage() {
               <ul className="file-list">
                 {topDislikedFiles.map((file, index) => (
                   <li key={file._id || index} className="file-item">
-                    <div className="file-rank">{index + 1}</div>
+                    <div className="file-rank">
+                      <FileText size={20} />
+                    </div>
                     <div className="file-info">
                       <div className="file-name">{file._id}</div>
                       <div className="file-stats-row">

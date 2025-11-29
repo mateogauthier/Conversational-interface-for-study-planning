@@ -11,7 +11,10 @@ const resources = {
       nav: {
         home: 'Home',
         files: 'Files',
-        settings: 'Settings'
+        settings: 'Settings',
+        feedback: 'Feedback',
+        stats: 'Stats',
+        profile: 'Profile'
       },
 
       // Authentication
@@ -165,6 +168,27 @@ const resources = {
         chunks: 'chunks'
       },
 
+      // Profile Page
+      profile: {
+        title: 'User Profile',
+        memberSince: 'Member since',
+        totalUploads: 'Total Uploads',
+        totalQueries: 'Total Queries',
+        storageUsed: 'Storage Used',
+        activityInfo: 'Activity Information',
+        lastActivity: 'Last Activity',
+        accountCreated: 'Account Created',
+        lastUpdated: 'Last Updated',
+        accountDetails: 'Account Details',
+        userId: 'User ID',
+        auth0Id: 'Auth0 ID',
+        retry: 'Retry',
+        noProfile: 'No profile data available',
+        loadError: 'Failed to load profile data',
+        admin: 'Admin',
+        student: 'Student'
+      },
+
       // Admin Feedback Page
       feedback: {
         title: 'Student Feedback Dashboard',
@@ -215,7 +239,10 @@ const resources = {
       nav: {
         home: 'Inicio',
         files: 'Archivos',
-        settings: 'Configuración'
+        settings: 'Configuración',
+        feedback: 'Comentarios',
+        stats: 'Estadísticas',
+        profile: 'Perfil'
       },
 
       // Authentication
@@ -367,6 +394,27 @@ const resources = {
       chunks: {
         chunk: 'fragmento',
         chunks: 'fragmentos'
+      },
+
+      // Profile Page
+      profile: {
+        title: 'Perfil de Usuario',
+        memberSince: 'Miembro desde',
+        totalUploads: 'Total de Subidas',
+        totalQueries: 'Total de Consultas',
+        storageUsed: 'Almacenamiento Usado',
+        activityInfo: 'Información de Actividad',
+        lastActivity: 'Última Actividad',
+        accountCreated: 'Cuenta Creada',
+        lastUpdated: 'Última Actualización',
+        accountDetails: 'Detalles de la Cuenta',
+        userId: 'ID de Usuario',
+        auth0Id: 'ID de Auth0',
+        retry: 'Reintentar',
+        noProfile: 'No hay datos de perfil disponibles',
+        loadError: 'Error al cargar los datos del perfil',
+        admin: 'Administrador',
+        student: 'Estudiante'
       },
 
       // Admin Feedback Page

@@ -136,7 +136,7 @@ function SettingsPage() {
   }
 
   if (loading) {
-    return <div className="spinner"></div>;
+    return <img src="/icons/loader.svg" alt="Loading" className="spinner" />;
   }
 
   return (

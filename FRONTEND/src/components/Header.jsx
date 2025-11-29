@@ -65,7 +65,7 @@ function Header() {
               className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
             >
               <MessageSquare size={18} />
-              <span>Feedback</span>
+              <span>{t('nav.feedback')}</span>
             </NavLink>
           )}
           <NavLink
@@ -153,7 +153,7 @@ function Header() {
                     onClick={closeMobileMenu}
                   >
                     <MessageSquare size={20} />
-                    <span>Feedback</span>
+                    <span>{t('nav.feedback')}</span>
                   </NavLink>
                   <NavLink
                     to="/admin/stats"
@@ -161,7 +161,7 @@ function Header() {
                     onClick={closeMobileMenu}
                   >
                     <BarChart3 size={20} />
-                    <span>{t('i18n.language') === 'es' ? 'Estadísticas' : 'Stats'}</span>
+                    <span>{t('nav.stats')}</span>
                   </NavLink>
                 </>
               )}
@@ -181,7 +181,7 @@ function Header() {
                     onClick={closeMobileMenu}
                   >
                     <User size={20} />
-                    <span>Profile</span>
+                    <span>{t('nav.profile')}</span>
                   </NavLink>
                   <button
                     onClick={handleLogout}
