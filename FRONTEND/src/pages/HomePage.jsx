@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { ragApi, llmApi, conversationApi, feedbackApi, fileApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import ArtifactViewer from '../components/ArtifactViewer';
+import { extractArtifactsFromMarkdown } from '../services/markdownParser';
 
 function HomePage() {
   const { t } = useTranslation();
@@ -148,22 +149,51 @@ function HomePage() {
         // Update conversation ID from response
         setCurrentConversationId(response.conversation_id);
 
+        // CLIENT-SIDE ARTIFACT EXTRACTION
+        // Parse markdown response and extract artifacts (tables, code, diagrams)
+        // This is more reliable than LLM-enforced structured outputs
+        let cleanContent = response.answer;
+        let extractedArtifacts = response.artifacts || [];
+
+        try {
+          const { cleanText, artifacts } = extractArtifactsFromMarkdown(response.answer);
+          cleanContent = cleanText;
+
+          // Merge backend artifacts with client-extracted artifacts (avoid duplicates)
+          const backendArtifacts = response.artifacts || [];
+          const newArtifacts = artifacts.filter(extracted => {
+            // Check if this artifact already exists in backend artifacts
+            return !backendArtifacts.some(existing =>
+              existing.type === extracted.type &&
+              existing.content === extracted.content
+            );
+          });
+
+          extractedArtifacts = [...backendArtifacts, ...newArtifacts];
+
+          console.log(`Client-side parsing: ${artifacts.length} artifacts extracted, ${extractedArtifacts.length} total artifacts`);
+        } catch (error) {
+          console.error('Client-side artifact extraction failed:', error);
+          // Fallback to backend artifacts
+          extractedArtifacts = response.artifacts || [];
+        }
+
         const assistantMessage = {
           id: response.message_id,
           type: 'assistant',
-          content: response.answer,
+          content: cleanContent, // Clean text without artifacts
           sources: response.sources,
           chunks: response.relevant_chunks,
           model: response.model_used,
           timestamp: new Date(),
-          artifacts: response.artifacts || [],
+          artifacts: extractedArtifacts,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
 
         // Auto-open artifact panel if artifacts are present
-        if (response.artifacts && response.artifacts.length > 0) {
-          setActiveArtifacts(response.artifacts);
+        if (extractedArtifacts && extractedArtifacts.length > 0) {
+          setActiveArtifacts(extractedArtifacts);
           setArtifactPanelOpen(true);
         }
 

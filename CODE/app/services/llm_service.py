@@ -224,84 +224,28 @@ class LLMService:
                 raise LLMException(f"Default model {self.default_model} is not available")
 
         try:
-            if enable_artifacts:
-                # Use Instructor for structured output with artifacts
-                artifact_instruction = self._get_instructor_artifact_instruction(language)
+            # MARKDOWN-FIRST APPROACH (Client-side parsing)
+            # Generate pure markdown - let frontend extract artifacts
+            markdown_instruction = self._get_markdown_generation_instruction(language)
 
-                # Create system prompt
-                system_prompt = f"""{combined_instructions}
+            # Create enhanced prompt with markdown instructions
+            enhanced_prompt = f"""{combined_instructions}
 
-{artifact_instruction}
+{markdown_instruction}
 
-You MUST return your response in the following structured format:
-- text: Your main explanation/answer
-- artifacts: An array of artifacts (code, diagrams, tables, visualizations) if needed
-
-If you generate artifacts, they will be displayed in a separate panel. The text field should contain your explanation."""
-
-                # Create user prompt
-                user_prompt = f"""{history_section}Context from documents: {context}
-
-Current question: {prompt}"""
-
-                # Get Instructor client
-                client = self._get_instructor_client()
-
-                # Generate structured response
-                structured_response: StructuredLLMResponse = await client.chat.completions.create(
-                    model=model,
-                    temperature=0,  # Deterministic outputs for better schema adherence
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    response_model=StructuredLLMResponse,
-                )
-
-                # Convert Pydantic model to dict
-                response_text = structured_response.text
-                artifacts = [artifact.model_dump() for artifact in structured_response.artifacts]
-
-                # Clean up text field - remove any HTML tables or artifacts that leaked into text
-                # This is a safety measure in case the LLM includes artifacts in both places
-                clean_text, additional_artifacts = self._extract_artifacts(response_text)
-
-                # Merge artifacts from Instructor and extracted artifacts (avoid duplicates)
-                all_artifacts = artifacts.copy()
-
-                # Only add extracted artifacts if they're not duplicates
-                for extracted in additional_artifacts:
-                    # Check if this artifact is already in the Instructor artifacts
-                    is_duplicate = False
-                    for existing in artifacts:
-                        if (existing.get('type') == extracted.get('type') and
-                            existing.get('content') == extracted.get('content')):
-                            is_duplicate = True
-                            break
-
-                    if not is_duplicate:
-                        all_artifacts.append(extracted)
-
-                result = {
-                    "response": clean_text,  # Use cleaned text without artifacts
-                    "artifacts": all_artifacts,
-                    "model_used": model
-                }
-
-                logger.info(f"Generated {len(structured_response.artifacts)} artifact(s) using Instructor, extracted {len(additional_artifacts)} additional artifact(s) from text")
-
-            else:
-                # Fallback to regular generation without artifacts
-                enhanced_prompt = f"""{history_section}Context from documents: {context}
+{history_section}Context from documents: {context}
 
 Current question: {prompt}
 
-Instructions: {combined_instructions} Base your answer on the provided context and previous conversation.
-
 Answer:"""
 
-                result = await self.generate_response(enhanced_prompt, model)
-                result["artifacts"] = []
+            # Generate regular response (markdown)
+            result = await self.generate_response(enhanced_prompt, model)
+
+            # Backend sends empty artifacts array - client will extract them
+            result["artifacts"] = []
+
+            logger.info(f"Generated markdown response - client will extract artifacts")
 
             return result
 
@@ -553,6 +497,123 @@ Example table artifact:
     }
   ]
 }"""
+
+    def _get_markdown_generation_instruction(self, language: Optional[str]) -> str:
+        """
+        Generate markdown-first instructions for LLM.
+        Client-side parsing will extract artifacts from markdown.
+        """
+        is_spanish = language == "spanish"
+
+        if is_spanish:
+            return """IMPORTANTE: Usa formato markdown estándar para todas las respuestas.
+
+FORMATO PARA VISUALIZACIONES:
+
+1. **Tablas**: Usa tablas markdown estándar con pipes (|)
+   Ejemplo:
+   | Columna 1 | Columna 2 | Columna 3 |
+   |-----------|-----------|-----------|
+   | Dato 1    | Dato 2    | Dato 3    |
+   | Dato 4    | Dato 5    | Dato 6    |
+
+2. **Código**: Usa bloques de código con triple backtick (```)
+   Ejemplo:
+   ```python
+   def hello():
+       print("Hello world")
+   ```
+
+3. **Diagramas y Gráficas**: Usa bloques de código mermaid
+   Ejemplo (diagrama de flujo):
+   ```mermaid
+   flowchart TD
+       A["Inicio"] --> B["Paso 1"]
+       B --> C["Paso 2"]
+       C --> D["Fin"]
+   ```
+
+   Ejemplo (gráfica):
+   ```mermaid
+   xychart-beta
+       title "Notas por Semestre"
+       x-axis [S1, S2, S3, S4]
+       y-axis "Nota" 0 --> 100
+       line [70, 75, 85, 92]
+   ```
+
+   Ejemplo (gráfica de barras):
+   ```mermaid
+   xychart-beta
+       title "Comparación de Notas"
+       x-axis [Mat1, Mat2, Mat3]
+       y-axis "Nota" 0 --> 100
+       bar [85, 90, 78]
+   ```
+
+SINTAXIS MERMAID CRÍTICA:
+- SIEMPRE usa comillas para el texto de los nodos en flowcharts: A["Texto aquí"]
+- NUNCA uses corchetes sin comillas: A[Texto] ❌ INCORRECTO
+- Para porcentajes o símbolos: A["72%"], B["Nota: 85"]
+- En xychart: NO uses "label" después de line/bar - solo datos: line [1, 2, 3]
+- Títulos SIEMPRE entre comillas: title "Mi Título"
+
+El cliente extraerá automáticamente las tablas, código y diagramas del markdown."""
+
+        else:
+            return """IMPORTANT: Use standard markdown format for all responses.
+
+FORMAT FOR VISUALIZATIONS:
+
+1. **Tables**: Use standard markdown tables with pipes (|)
+   Example:
+   | Column 1 | Column 2 | Column 3 |
+   |----------|----------|----------|
+   | Data 1   | Data 2   | Data 3   |
+   | Data 4   | Data 5   | Data 6   |
+
+2. **Code**: Use code blocks with triple backticks (```)
+   Example:
+   ```python
+   def hello():
+       print("Hello world")
+   ```
+
+3. **Diagrams and Charts**: Use mermaid code blocks
+   Example (flowchart):
+   ```mermaid
+   flowchart TD
+       A["Start"] --> B["Step 1"]
+       B --> C["Step 2"]
+       C --> D["End"]
+   ```
+
+   Example (chart):
+   ```mermaid
+   xychart-beta
+       title "Grades by Semester"
+       x-axis [S1, S2, S3, S4]
+       y-axis "Grade" 0 --> 100
+       line [70, 75, 85, 92]
+   ```
+
+   Example (bar chart):
+   ```mermaid
+   xychart-beta
+       title "Grade Comparison"
+       x-axis [Math1, Math2, Math3]
+       y-axis "Grade" 0 --> 100
+       bar [85, 90, 78]
+   ```
+
+CRITICAL MERMAID SYNTAX:
+- ALWAYS use quotes for node text in flowcharts: A["Text here"]
+- NEVER use brackets without quotes: A[Text] ❌ WRONG
+- For percentages or symbols: A["72%"], B["Grade: 85"]
+- In xychart: NO "label" after line/bar - just data: line [1, 2, 3]
+- Titles ALWAYS quoted: title "My Title"
+
+The client will automatically extract tables, code, and diagrams from markdown."""
 
     def _extract_artifacts(self, response_text: str) -> Tuple[str, List[Dict[str, Any]]]:
         """
