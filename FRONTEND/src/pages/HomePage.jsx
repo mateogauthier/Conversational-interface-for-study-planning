@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { ragApi, llmApi, conversationApi, feedbackApi, fileApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
+import ArtifactViewer from '../components/ArtifactViewer';
 
 function HomePage() {
   const { t } = useTranslation();
@@ -21,6 +22,10 @@ function HomePage() {
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Artifact state
+  const [activeArtifacts, setActiveArtifacts] = useState(null);
+  const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
 
@@ -66,6 +71,7 @@ function HomePage() {
         model: msg.model_used,
         sources: msg.source_files || [],
         feedback: msg.feedback,
+        artifacts: msg.artifacts || [],
         isLoadedFromHistory: true, // Mark as loaded from history
         // Note: chunks are not stored in message history
       }));
@@ -150,9 +156,16 @@ function HomePage() {
           chunks: response.relevant_chunks,
           model: response.model_used,
           timestamp: new Date(),
+          artifacts: response.artifacts || [],
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // Auto-open artifact panel if artifacts are present
+        if (response.artifacts && response.artifacts.length > 0) {
+          setActiveArtifacts(response.artifacts);
+          setArtifactPanelOpen(true);
+        }
 
         // Reload conversations list if this was a new conversation
         if (!currentConversationId) {
@@ -329,36 +342,44 @@ function HomePage() {
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* Header */}
-        <div
-          style={{
-            padding: '1rem 1.5rem',
-            borderBottom: '1px solid #e2e8f0',
-            backgroundColor: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
-          }}
-        >
-          {!sidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="btn btn-secondary"
-              style={{ padding: '0.5rem', minWidth: 'auto' }}
-              title={t('home.openSidebar')}
-            >
-              <Menu size={20} />
-            </button>
-          )}
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <MessageCircle size={24} />
-              {currentConversationId ? t('home.continueConversation') : t('home.title')}
-            </h2>
+      {/* Main Content Area with Split View */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minWidth: 0 }}>
+        {/* Chat Area */}
+        <div style={{
+          flex: artifactPanelOpen ? '1 1 50%' : '1 1 100%',
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0,
+          transition: 'flex 0.3s ease',
+        }}>
+          {/* Header */}
+          <div
+            style={{
+              padding: '1rem 1.5rem',
+              borderBottom: '1px solid #e2e8f0',
+              backgroundColor: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+            }}
+          >
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem', minWidth: 'auto' }}
+                title={t('home.openSidebar')}
+              >
+                <Menu size={20} />
+              </button>
+            )}
+            <div style={{ flex: 1 }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MessageCircle size={24} />
+                {currentConversationId ? t('home.continueConversation') : t('home.title')}
+              </h2>
+            </div>
           </div>
-        </div>
 
         {/* Chat Messages */}
         <div
@@ -382,7 +403,14 @@ function HomePage() {
           )}
 
           {messages.map((message, index) => (
-            <ChatMessage key={index} message={message} />
+            <ChatMessage
+              key={index}
+              message={message}
+              onViewArtifacts={(artifacts) => {
+                setActiveArtifacts(artifacts);
+                setArtifactPanelOpen(true);
+              }}
+            />
           ))}
 
           {queryLoading && (
@@ -397,41 +425,59 @@ function HomePage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Chat Input */}
-        <div
-          style={{
-            padding: '1rem 1.5rem',
-            backgroundColor: '#ffffff',
-            borderTop: '1px solid #e2e8f0',
-          }}
-        >
-          <form onSubmit={handleQuerySubmit} style={{ display: 'flex', gap: '0.75rem' }}>
-            <input
-              type="text"
-              className="input chat-input"
-              placeholder={t('home.placeholder')}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={queryLoading}
-              style={{ flex: 1 }}
-            />
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={queryLoading || !query.trim()}
-              style={{ minWidth: '100px' }}
-            >
-              <Send size={20} />
-              {t('home.send')}
-            </button>
-          </form>
+          {/* Chat Input */}
+          <div
+            style={{
+              padding: '1rem 1.5rem',
+              backgroundColor: '#ffffff',
+              borderTop: '1px solid #e2e8f0',
+            }}
+          >
+            <form onSubmit={handleQuerySubmit} style={{ display: 'flex', gap: '0.75rem' }}>
+              <input
+                type="text"
+                className="input chat-input"
+                placeholder={t('home.placeholder')}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={queryLoading}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={queryLoading || !query.trim()}
+                style={{ minWidth: '100px' }}
+              >
+                <Send size={20} />
+                {t('home.send')}
+              </button>
+            </form>
+          </div>
         </div>
+
+        {/* Artifact Panel */}
+        {artifactPanelOpen && activeArtifacts && (
+          <div style={{
+            flex: '1 1 50%',
+            borderLeft: '1px solid #e2e8f0',
+            backgroundColor: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+          }}>
+            <ArtifactViewer
+              artifacts={activeArtifacts}
+              onClose={() => setArtifactPanelOpen(false)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ChatMessage({ message }) {
+function ChatMessage({ message, onViewArtifacts }) {
   const { t } = useTranslation();
   const [feedback, setFeedback] = useState(message.feedback || null);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
@@ -439,6 +485,7 @@ function ChatMessage({ message }) {
   const [comment, setComment] = useState('');
   const [pendingFeedback, setPendingFeedback] = useState(null);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const hasArtifacts = message.artifacts && message.artifacts.length > 0;
 
   // Format file name helper function
   const formatFileName = (filename) => {
@@ -559,11 +606,28 @@ function ChatMessage({ message }) {
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {message.model && (
             <div style={{ fontSize: '0.75rem', color: '#a0aec0' }}>
               {t('home.model')}: {message.model}
             </div>
+          )}
+          {hasArtifacts && onViewArtifacts && (
+            <button
+              onClick={() => onViewArtifacts(message.artifacts)}
+              className="btn btn-secondary"
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+              title="View artifacts"
+            >
+              <Eye size={14} />
+              View {message.artifacts.length} {message.artifacts.length === 1 ? 'Artifact' : 'Artifacts'}
+            </button>
           )}
         </div>
 

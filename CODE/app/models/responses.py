@@ -73,6 +73,14 @@ class RelevantChunk(BaseModel):
     distance: float = Field(..., description="Similarity distance (lower is more similar)")
 
 
+class ArtifactData(BaseModel):
+    """Model for LLM-generated artifacts."""
+    type: str = Field(..., description="Artifact type (code, html, table, json, mermaid, etc.)")
+    language: Optional[str] = Field(None, description="Programming language for code artifacts")
+    title: Optional[str] = Field(None, description="Optional title for the artifact")
+    content: str = Field(..., description="Raw content of the artifact")
+
+
 class RAGResponse(BaseResponse):
     """RAG query response."""
     query: str = Field(..., description="Original query")
@@ -92,6 +100,11 @@ class RAGLLMResponse(BaseResponse):
     model_used: Optional[str] = Field(None, description="LLM model used for generation")
     conversation_id: str = Field(..., description="Conversation ID for this exchange")
     message_id: str = Field(..., description="Message ID for this assistant response")
+    artifacts: List[ArtifactData] = Field(default_factory=list, description="Generated artifacts for display")
+    # Adaptive RAG routing metadata
+    routing_strategy: Optional[str] = Field(None, description="Routing strategy used: no_retrieval, single_retrieval, or multi_retrieval")
+    routing_confidence: Optional[float] = Field(None, description="Confidence score of routing decision (0.0-1.0)")
+    chromadb_queried: bool = Field(True, description="Whether ChromaDB was actually queried for this request")
 
 
 class RAGStatsResponse(BaseResponse):
@@ -135,6 +148,7 @@ class MessageInfo(BaseModel):
     model_used: Optional[str] = Field(None, description="LLM model used (for assistant messages)")
     source_files: List[str] = Field(default_factory=list, description="Source files used for this response")
     feedback: Optional[str] = Field(None, description="User feedback (like or dislike)")
+    artifacts: List[ArtifactData] = Field(default_factory=list, description="Generated artifacts for display")
 
 
 class ConversationListResponse(BaseResponse):

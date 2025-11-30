@@ -12,6 +12,7 @@ from app.services.rag_service import RAGService, get_rag_service_instance
 from app.services.auth_service import AuthService, get_auth_service
 from app.services.user_service import UserService, get_user_service
 from app.services.conversation_service import ConversationService, get_conversation_service
+from app.services.routing_service import RoutingService, routing_service
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     UnauthorizedHTTPException,
@@ -74,6 +75,11 @@ async def get_conversation_service_dep(
 ) -> ConversationService:
     """Get conversation service dependency."""
     return get_conversation_service()
+
+
+def get_routing_service() -> RoutingService:
+    """Get routing service dependency."""
+    return routing_service
 
 
 async def get_current_user(
