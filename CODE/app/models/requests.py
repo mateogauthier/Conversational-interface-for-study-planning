@@ -28,6 +28,18 @@ class RAGLLMRequest(BaseModel):
     enable_artifacts: Optional[bool] = Field(True, description="Whether to enable artifact generation capabilities")
 
 
+class AgentQueryRequest(RAGLLMRequest):
+    """Request model for agent-powered queries (extends RAGLLMRequest)."""
+    enable_agent: Optional[bool] = Field(True, description="Whether to enable agent tool execution")
+    auto_approve_tools: Optional[bool] = Field(False, description="Auto-approve all tool executions (overrides safety settings)")
+
+
+class AgentConfirmRequest(BaseModel):
+    """Request model for confirming pending agent actions."""
+    confirmation_id: str = Field(..., description="ID of the pending confirmation")
+    approved: bool = Field(..., description="Whether to approve the action")
+
+
 class FileDeleteRequest(BaseModel):
     """Request model for file deletion."""
     filename: str = Field(..., description="Name of the file to delete")

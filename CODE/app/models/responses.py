@@ -107,6 +107,48 @@ class RAGLLMResponse(BaseResponse):
     chromadb_queried: bool = Field(True, description="Whether ChromaDB was actually queried for this request")
 
 
+class AgentToolCallResponse(BaseModel):
+    """Agent tool call details."""
+    tool_name: str = Field(..., description="Name of the tool executed")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Parameters passed to the tool")
+    result: Optional[Any] = Field(None, description="Result of tool execution")
+    error: Optional[str] = Field(None, description="Error message if tool failed")
+    execution_time_ms: Optional[int] = Field(None, description="Execution time in milliseconds")
+
+
+class AgentStepResponse(BaseModel):
+    """Agent execution step."""
+    step_number: int = Field(..., description="Step number in execution sequence")
+    step_type: str = Field(..., description="Type: 'thought', 'tool_call', 'result', 'error', 'confirmation_required'")
+    content: str = Field(..., description="Step description")
+    tool_call: Optional[AgentToolCallResponse] = Field(None, description="Tool call details if applicable")
+    timestamp: datetime = Field(default_factory=datetime.now, description="When step occurred")
+
+
+class PendingConfirmationResponse(BaseModel):
+    """Pending tool execution awaiting confirmation."""
+    confirmation_id: str = Field(..., description="Unique confirmation ID")
+    tool_name: str = Field(..., description="Tool awaiting confirmation")
+    parameters: Dict[str, Any] = Field(..., description="Tool parameters")
+    warning_message: str = Field(..., description="Warning/description for user")
+    conversation_id: str = Field(..., description="Associated conversation")
+
+
+class AgentQueryResponse(RAGLLMResponse):
+    """Agent-powered query response (extends RAGLLMResponse)."""
+    agent_steps: List[AgentStepResponse] = Field(default_factory=list, description="Agent execution steps")
+    tools_executed: List[str] = Field(default_factory=list, description="Tools that were executed")
+    pending_confirmations: List[PendingConfirmationResponse] = Field(default_factory=list, description="Actions requiring confirmation")
+    requires_confirmation: bool = Field(default=False, description="Whether user confirmation is needed")
+    is_complete: bool = Field(default=True, description="Whether agent finished processing")
+
+
+class AgentToolsListResponse(BaseResponse):
+    """List of available agent tools."""
+    tools: List[Dict[str, Any]] = Field(..., description="Available tools for this user")
+    tool_count: int = Field(..., description="Number of available tools")
+
+
 class RAGStatsResponse(BaseResponse):
     """RAG system statistics response."""
     collection_name: str = Field(..., description="Name of the document collection")

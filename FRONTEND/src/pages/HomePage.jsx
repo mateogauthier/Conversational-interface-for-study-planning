@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { ragApi, llmApi, conversationApi, feedbackApi, fileApi } from '../services/api';
+import { ragApi, llmApi, conversationApi, feedbackApi, fileApi, agentApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import mermaid from 'mermaid';
+import AgentSteps from '../components/AgentSteps';
+import ToolConfirmation from '../components/ToolConfirmation';
 
 // Mermaid diagram component
 function MermaidDiagram({ chart }) {
@@ -63,12 +65,17 @@ function HomePage() {
   const [queryLoading, setQueryLoading] = useState(false);
   // Read useRAG from localStorage (default to true)
   const useRAG = localStorage.getItem('useRAG') !== 'false';
+  // Read enableAgent from localStorage (default to true)
+  const enableAgent = localStorage.getItem('enableAgent') !== 'false';
 
   // Conversation state
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Agent state
+  const [pendingConfirmations, setPendingConfirmations] = useState([]);
 
   // Library renders everything inline - no separate artifact panel needed
 
@@ -181,27 +188,40 @@ function HomePage() {
       let response;
 
       if (useRAG) {
-        // RAG-enabled query (with conversation support)
-        response = await ragApi.query(currentQuery, {
+        // Use agent API if enabled, otherwise standard RAG
+        const apiToUse = enableAgent ? agentApi : ragApi;
+
+        response = await apiToUse.query(currentQuery, {
+          conversationId: currentConversationId,
           nResults: preferredChunks,
           language: preferredLanguage === 'auto' ? null : preferredLanguage,
           model: preferredModel || null,
-          conversationId: currentConversationId, // Pass conversation ID
+          enableAgent: enableAgent,
         });
 
         // Update conversation ID from response
         setCurrentConversationId(response.conversation_id);
 
-        // Library-based rendering: Keep full markdown content
-        // @uiw/react-markdown-preview handles tables, code, mermaid automatically
+        // Check for pending confirmations (agent only)
+        if (response.pending_confirmations && response.pending_confirmations.length > 0) {
+          setPendingConfirmations(response.pending_confirmations);
+        } else {
+          setPendingConfirmations([]);
+        }
+
+        // Create assistant message with agent-specific fields
         const assistantMessage = {
           id: response.message_id,
           type: 'assistant',
-          content: response.answer, // Full markdown - library will render everything
-          sources: response.sources,
-          chunks: response.relevant_chunks,
+          content: response.answer,
+          sources: response.sources || [],
+          chunks: response.relevant_chunks || [],
           model: response.model_used,
           timestamp: new Date(),
+          // Agent-specific fields
+          agentSteps: response.agent_steps || [],
+          toolsExecuted: response.tools_executed || [],
+          requiresConfirmation: response.requires_confirmation || false,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
@@ -237,6 +257,45 @@ function HomePage() {
     } finally {
       setQueryLoading(false);
     }
+  };
+
+  // Agent confirmation handlers
+  const handleConfirmationApproved = (response) => {
+    // Clear pending confirmations
+    setPendingConfirmations([]);
+
+    // Add agent response to messages
+    const assistantMessage = {
+      id: response.message_id,
+      type: 'assistant',
+      content: response.answer,
+      sources: response.sources || [],
+      model: response.model_used,
+      timestamp: new Date(),
+      agentSteps: response.agent_steps || [],
+      toolsExecuted: response.tools_executed || [],
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    // Reload conversations if needed
+    if (currentConversationId) {
+      loadConversations();
+    }
+  };
+
+  const handleConfirmationCancelled = (response) => {
+    // Clear pending confirmations
+    setPendingConfirmations([]);
+
+    // Add cancellation message
+    const assistantMessage = {
+      type: 'assistant',
+      content: response.answer || 'Action cancelled.',
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
   };
 
   return (
@@ -456,6 +515,17 @@ function HomePage() {
             </div>
           )}
 
+          {/* Agent tool confirmation dialog */}
+          {pendingConfirmations.length > 0 && (
+            <div className="chat-message assistant">
+              <ToolConfirmation
+                pendingConfirmations={pendingConfirmations}
+                onConfirmed={handleConfirmationApproved}
+                onCancelled={handleConfirmationCancelled}
+              />
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -651,6 +721,14 @@ function ChatMessage({ message }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Agent execution steps */}
+      {message.agentSteps && message.agentSteps.length > 0 && (
+        <AgentSteps
+          steps={message.agentSteps}
+          toolsExecuted={message.toolsExecuted}
+        />
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>

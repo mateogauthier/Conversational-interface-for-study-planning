@@ -6,13 +6,16 @@ from fastapi.openapi.models import SecuritySchemeType, HTTPBearer
 import logging
 
 from app.core.config import get_settings
-from app.api.routes import files, llm, rag, users, admin, conversations, feedback
+from app.api.routes import files, llm, rag, users, admin, conversations, feedback, agent
 from app.models.responses import APIInfoResponse, HealthResponse
 from app.db.database import mongodb
 from app.services import conversation_service as conv_service_module
 from app.services import feedback_service as feedback_service_module
 from app.services import rag_service as rag_service_module
 from app.services.file_service import get_file_service_instance
+from app.services.llm_service import llm_service
+from app.services.user_service import get_user_service
+from app.agents.api_provider import create_agent_provider
 
 # Configure logging
 logging.basicConfig(
@@ -86,6 +89,26 @@ async def startup_event():
         rag_service_module.rag_service = rag_service_module.RAGService(file_service=file_service)
         logger.info("RAG service initialized with file_service")
 
+        # Initialize agent provider
+        if settings.enable_agent_tools:
+            agent_provider = create_agent_provider(
+                provider_type=settings.agent_provider,
+                llm_service=llm_service,
+                rag_service=rag_service_module.rag_service,
+                conversation_service=conv_service_module.conversation_service,
+                file_service=file_service,
+                user_service=get_user_service(db),
+                api_url=settings.agent_api_url,
+                api_key=settings.agent_api_key,
+                fallback_to_local=settings.agent_fallback_to_local,
+                max_iterations=settings.agent_max_iterations,
+                auto_approve_reads=settings.agent_auto_approve_reads
+            )
+            agent.set_agent_provider(agent_provider)
+            logger.info(f"Agent provider initialized: {settings.agent_provider}")
+        else:
+            logger.info("Agent tools disabled in configuration")
+
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
         # Don't raise - allow app to start but services may not work
@@ -120,6 +143,7 @@ app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(conversations.router)
 app.include_router(feedback.router)
+app.include_router(agent.router)
 
 
 @app.get("/", response_model=APIInfoResponse)
@@ -164,6 +188,12 @@ async def root():
                 "list": "GET /conversations/ - List user's conversations",
                 "get": "GET /conversations/{id} - Get conversation with messages",
                 "delete": "DELETE /conversations/{id} - Delete conversation"
+            },
+            "agent": {
+                "query": "POST /agent/query - Agent-powered query with tool execution",
+                "confirm": "POST /agent/confirm - Confirm pending agent action",
+                "tools": "GET /agent/tools - List available tools for user",
+                "health": "GET /agent/health - Agent service health check"
             },
             "admin": {
                 "list_users": "GET /admin/users - List all users (admin only)",

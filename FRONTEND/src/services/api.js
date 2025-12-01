@@ -281,4 +281,55 @@ export const adminFeedbackApi = {
   },
 };
 
+// Agent API
+export const agentApi = {
+  // Execute agent-powered query with tool execution
+  query: async (prompt, options = {}) => {
+    const {
+      conversationId = null,
+      nResults = 5,
+      language = null,
+      model = null,
+      instructions = null,
+      enableAgent = true,
+      autoApproveTools = false,
+      enableArtifacts = true,
+    } = options;
+
+    const response = await api.post('/agent/query', {
+      prompt,
+      conversation_id: conversationId,
+      n_results: nResults,
+      language,
+      model,
+      instructions,
+      enable_agent: enableAgent,
+      auto_approve_tools: autoApproveTools,
+      enable_artifacts: enableArtifacts,
+    });
+    return response.data;
+  },
+
+  // Confirm or deny pending agent action
+  confirm: async (confirmationId, approved) => {
+    const response = await api.post('/agent/confirm', {
+      confirmation_id: confirmationId,
+      approved,
+    });
+    return response.data;
+  },
+
+  // Get list of tools available to current user
+  getTools: async () => {
+    const response = await api.get('/agent/tools');
+    return response.data;
+  },
+
+  // Check agent service health
+  health: async () => {
+    const response = await api.get('/agent/health');
+    return response.data;
+  },
+};
+
 export default api;

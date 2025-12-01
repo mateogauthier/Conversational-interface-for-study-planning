@@ -16,6 +16,7 @@ class RoutingStrategy(str, Enum):
     NO_RETRIEVAL = "no_retrieval"  # Answer directly without documents
     SINGLE_RETRIEVAL = "single_retrieval"  # Standard RAG with one search
     MULTI_RETRIEVAL = "multi_retrieval"  # Complex queries needing multiple searches
+    AGENT_TOOLS = "agent_tools"  # Requires tool execution (file ops, conversation management, etc.)
 
 
 class RoutingService:
@@ -83,6 +84,32 @@ class RoutingService:
             Classification result with strategy, confidence, and reasoning
         """
         query_lower = query.lower().strip()
+
+        # Category 0: Tool-requiring queries (AGENT_TOOLS) - check FIRST
+        tool_indicators = [
+            # File operations
+            'list my files', 'show my files', 'what files do i have', 'my files',
+            'delete file', 'remove file', 'delete this file', 'elimina archivo',
+            'lista mis archivos', 'mis archivos', 'mostrar archivos',
+            # Conversation operations
+            'show my conversations', 'list conversations', 'my conversations',
+            'delete conversation', 'remove conversation', 'delete this conversation',
+            'mis conversaciones', 'mostrar conversaciones', 'elimina conversación',
+            # User stats
+            'my statistics', 'my stats', 'how many files', 'how many queries',
+            'mis estadísticas', 'cuántos archivos', 'cuántas consultas',
+            # Multi-step patterns
+            'first...then', 'after that', 'and then', 'y luego', 'después',
+            'list...and', 'show...and', 'get...and', 'find...and then'
+        ]
+
+        if any(indicator in query_lower for indicator in tool_indicators):
+            return {
+                "strategy": RoutingStrategy.AGENT_TOOLS,
+                "confidence": 0.88,
+                "reasoning": "Query requires tool execution (file/conversation operations or multi-step actions)",
+                "method": "heuristic"
+            }
 
         # Category 1: Greetings and simple conversational queries (NO RETRIEVAL)
         greetings = [
@@ -224,9 +251,12 @@ class RoutingService:
 3. MULTI_RETRIEVAL: Complex questions needing multiple documents or deep reasoning
    Examples: "compare all my programming courses", "create a study plan for next semester", "what courses should I take to improve my GPA"
 
+4. AGENT_TOOLS: Questions requiring tool execution (file management, conversation operations, statistics)
+   Examples: "show my files", "list my conversations", "delete this file", "how many files do I have", "show files and search for calculus"
+
 User query: "{query}"
 
-Respond with ONLY the category name (NO_RETRIEVAL, SINGLE_RETRIEVAL, or MULTI_RETRIEVAL) and a brief reason.
+Respond with ONLY the category name (NO_RETRIEVAL, SINGLE_RETRIEVAL, MULTI_RETRIEVAL, or AGENT_TOOLS) and a brief reason.
 Format: CATEGORY | reason"""
 
         try:
@@ -251,6 +281,9 @@ Format: CATEGORY | reason"""
             if "NO_RETRIEVAL" in category_str:
                 strategy = RoutingStrategy.NO_RETRIEVAL
                 confidence = 0.85
+            elif "AGENT_TOOLS" in category_str:
+                strategy = RoutingStrategy.AGENT_TOOLS
+                confidence = 0.82
             elif "MULTI_RETRIEVAL" in category_str:
                 strategy = RoutingStrategy.MULTI_RETRIEVAL
                 confidence = 0.80
