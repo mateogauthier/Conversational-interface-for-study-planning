@@ -232,12 +232,19 @@ CODE/sample_*
 test_document.*
 sample_*
 
-# claude
-.claude
+# Claude Code
+.claude/
+.claude/settings.local.json
 
 # Node.js / Frontend
 node_modules/
 FRONTEND/node_modules/
+# Root node_modules (shouldn't exist, but ignore if accidentally created)
+/node_modules/
+/package.json
+/package-lock.json
+/yarn.lock
+/pnpm-lock.yaml
 
 # Vite build cache and output
 .vite/
@@ -274,3 +281,33 @@ pnpm-debug.log*
 # Docker data directories
 CODE/data/uploads/
 CODE/data/chroma_db/
+
+# Temporary and test files
+*.tmp
+*.temp
+*.bak
+*~
+.*.swp
+.*.swo
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE-specific (additional)
+.idea/
+*.iml
+.vscode/.ropeproject/
+
+# Test and development artifacts
+*.test
+test_*.py.output
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Any accidentally created root-level Python files (one-off scripts)
+/test_*.py
+/reprocess_*.py
