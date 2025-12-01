@@ -173,7 +173,7 @@ class ToolExecutor:
         chunks = []
         for chunk in search_results.get("relevant_chunks", []):
             chunks.append({
-                "content": chunk.page_content[:200] + "..." if len(chunk.page_content) > 200 else chunk.page_content,
+                "content": chunk.content[:200] + "..." if len(chunk.content) > 200 else chunk.content,
                 "source": chunk.metadata.get("file_name", "Unknown"),
                 "chunk_index": chunk.metadata.get("chunk_index", 0)
             })
@@ -222,9 +222,9 @@ class ToolExecutor:
         limit = parameters.get("limit", 10)
 
         conversations = await self.conversation_service.get_user_conversations(
-            auth0_id=user.auth0_id,
+            user_auth0_id=user.auth0_id,
             limit=limit,
-            offset=0
+            skip=0
         )
 
         return {

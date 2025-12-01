@@ -149,10 +149,10 @@ class RoutingService:
             'calendario', 'calendar', 'horario', 'schedule'
         ]
 
-        # Check for academic keywords FIRST
+        # Check for academic keywords
         has_academic_keywords = any(keyword in query_lower for keyword in academic_strong_keywords)
 
-        # Category 2b: Simple factual questions (NO RETRIEVAL) - but only if NO academic keywords
+        # Category 2b: Simple factual questions (NO RETRIEVAL)
         simple_patterns = [
             'what is', 'qué es', 'cuánto es', 'how much', 'define',
             'what does', 'qué significa', 'who is', 'quién es', 'how do i',
@@ -172,25 +172,34 @@ class RoutingService:
             'loop', 'bucle', 'if statement', 'condicional', 'class', 'clase'
         ]
 
-        # Only no-retrieval if clearly general knowledge AND no academic keywords
-        if (any(pattern in query_lower for pattern in simple_patterns) and
-            not has_academic_keywords):
-            # High confidence if it has general knowledge indicators
-            if any(indicator in query_lower for indicator in general_knowledge_indicators):
-                return {
-                    "strategy": RoutingStrategy.NO_RETRIEVAL,
-                    "confidence": 0.85,
-                    "reasoning": "General knowledge question - no university documents needed",
-                    "method": "heuristic"
-                }
-            # Medium confidence for short questions
-            elif len(query.split()) <= 12:
-                return {
-                    "strategy": RoutingStrategy.NO_RETRIEVAL,
-                    "confidence": 0.75,
-                    "reasoning": "Simple factual question without academic context",
-                    "method": "heuristic"
-                }
+        # Academic context indicators (words that suggest document context is needed)
+        academic_context_indicators = [
+            'my', 'mis', 'our', 'nuestro', 'this university', 'esta universidad',
+            'according to', 'según', 'in the', 'en el', 'for this course',
+            'para este curso', 'here', 'aquí', 'at', 'en'
+        ]
+
+        has_simple_pattern = any(pattern in query_lower for pattern in simple_patterns)
+        has_general_knowledge = any(indicator in query_lower for indicator in general_knowledge_indicators)
+        has_academic_context = any(ctx in query_lower for ctx in academic_context_indicators)
+
+        # High priority: General knowledge questions (even with academic words, if they're clearly general)
+        if has_simple_pattern and has_general_knowledge and not has_academic_context:
+            return {
+                "strategy": RoutingStrategy.NO_RETRIEVAL,
+                "confidence": 0.90,
+                "reasoning": "General knowledge question - no university documents needed",
+                "method": "heuristic"
+            }
+
+        # Medium priority: Simple questions without academic context
+        if has_simple_pattern and not has_academic_context and len(query.split()) <= 12:
+            return {
+                "strategy": RoutingStrategy.NO_RETRIEVAL,
+                "confidence": 0.75,
+                "reasoning": "Simple factual question without academic context",
+                "method": "heuristic"
+            }
 
         # Category 3: Complex reasoning queries (MULTI RETRIEVAL) - check BEFORE academic
         # to capture complex academic queries
@@ -214,8 +223,8 @@ class RoutingService:
 
         has_complexity = any(indicator in query_lower for indicator in complexity_indicators)
 
-        # If both complex AND academic, it's multi-retrieval
-        if has_complexity and has_academic_keywords:
+        # If both complex AND academic WITH context, it's multi-retrieval
+        if has_complexity and has_academic_keywords and has_academic_context:
             return {
                 "strategy": RoutingStrategy.MULTI_RETRIEVAL,
                 "confidence": 0.85,
@@ -223,12 +232,13 @@ class RoutingService:
                 "method": "heuristic"
             }
 
-        # Category 4: Academic queries (SINGLE RETRIEVAL - high confidence)
-        if has_academic_keywords:
+        # Category 4: Academic queries (SINGLE RETRIEVAL - only if has context)
+        # Academic keywords alone aren't enough - need context indicators too
+        if has_academic_keywords and has_academic_context:
             return {
                 "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
-                "confidence": 0.90,
-                "reasoning": "Academic keywords detected - document retrieval needed",
+                "confidence": 0.88,
+                "reasoning": "Academic query with context indicators - document retrieval needed",
                 "method": "heuristic"
             }
 
