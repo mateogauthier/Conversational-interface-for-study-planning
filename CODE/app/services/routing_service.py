@@ -155,19 +155,42 @@ class RoutingService:
         # Category 2b: Simple factual questions (NO RETRIEVAL) - but only if NO academic keywords
         simple_patterns = [
             'what is', 'qué es', 'cuánto es', 'how much', 'define',
-            'what does', 'qué significa', 'who is', 'quién es'
+            'what does', 'qué significa', 'who is', 'quién es', 'how do i',
+            'cómo se', 'explain', 'explica', 'what are', 'qué son',
+            'tell me about', 'háblame de', 'describe', 'describe'
         ]
 
-        # Only no-retrieval if very short, clearly general knowledge, AND no academic keywords
+        # Expand general knowledge indicators
+        general_knowledge_indicators = [
+            'python', 'java', 'javascript', 'programming', 'programación',
+            'algorithm', 'algoritmo', 'data structure', 'estructura de datos',
+            'mathematics', 'matemáticas', 'physics', 'física', 'chemistry', 'química',
+            'biology', 'biología', 'history', 'historia', 'geography', 'geografía',
+            'derivative', 'derivada', 'integral', 'equation', 'ecuación',
+            'function', 'función', 'variable', 'constant', 'constante',
+            'list', 'lista', 'array', 'dictionary', 'diccionario', 'tuple', 'tupla',
+            'loop', 'bucle', 'if statement', 'condicional', 'class', 'clase'
+        ]
+
+        # Only no-retrieval if clearly general knowledge AND no academic keywords
         if (any(pattern in query_lower for pattern in simple_patterns) and
-            len(query.split()) <= 8 and
             not has_academic_keywords):
-            return {
-                "strategy": RoutingStrategy.NO_RETRIEVAL,
-                "confidence": 0.80,
-                "reasoning": "Simple factual question without academic context",
-                "method": "heuristic"
-            }
+            # High confidence if it has general knowledge indicators
+            if any(indicator in query_lower for indicator in general_knowledge_indicators):
+                return {
+                    "strategy": RoutingStrategy.NO_RETRIEVAL,
+                    "confidence": 0.85,
+                    "reasoning": "General knowledge question - no university documents needed",
+                    "method": "heuristic"
+                }
+            # Medium confidence for short questions
+            elif len(query.split()) <= 12:
+                return {
+                    "strategy": RoutingStrategy.NO_RETRIEVAL,
+                    "confidence": 0.75,
+                    "reasoning": "Simple factual question without academic context",
+                    "method": "heuristic"
+                }
 
         # Category 3: Complex reasoning queries (MULTI RETRIEVAL) - check BEFORE academic
         # to capture complex academic queries
@@ -209,21 +232,37 @@ class RoutingService:
                 "method": "heuristic"
             }
 
-        # Category 5: Uncertain - medium confidence, default to safe option
-        # If query is long and unclear, assume it needs retrieval
-        if len(query.split()) > 10:
+        # Category 5: Check for document/file references
+        document_references = [
+            'document', 'documento', 'file', 'archivo', 'pdf', 'syllabus',
+            'material', 'materials', 'according to', 'según', 'in the',
+            'en el documento', 'in my files', 'en mis archivos'
+        ]
+
+        if any(ref in query_lower for ref in document_references):
             return {
                 "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
-                "confidence": 0.60,
-                "reasoning": "Long query with uncertain intent - defaulting to retrieval",
+                "confidence": 0.82,
+                "reasoning": "Query explicitly references documents/files",
                 "method": "heuristic"
             }
 
-        # Default fallback: short, unclear queries
+        # Category 6: Uncertain queries - use hybrid approach
+        # Long queries likely need context
+        if len(query.split()) > 15:
+            return {
+                "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
+                "confidence": 0.60,
+                "reasoning": "Long query with uncertain intent - may benefit from document context",
+                "method": "heuristic"
+            }
+
+        # Default fallback: short, unclear queries - prefer direct answers
+        # Most users asking general questions don't expect document retrieval
         return {
-            "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
-            "confidence": 0.50,
-            "reasoning": "Uncertain query type - defaulting to safe retrieval option",
+            "strategy": RoutingStrategy.NO_RETRIEVAL,
+            "confidence": 0.55,
+            "reasoning": "No clear indicators - defaulting to direct answer (general knowledge)",
             "method": "heuristic"
         }
 
