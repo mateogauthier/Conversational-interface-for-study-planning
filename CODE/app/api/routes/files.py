@@ -202,7 +202,7 @@ async def download_file(
     current_user: UserInDB = Depends(get_current_user),
     file_service: FileService = Depends(get_file_service)
 ):
-    """Download a file (if user has access)."""
+    """Download a file from GridFS (if user has access)."""
     try:
         # Check if user can access this file
         can_access = await file_service.can_user_access_file(filename, current_user)
@@ -216,22 +216,26 @@ async def download_file(
         if not file_metadata:
             raise FileNotFoundHTTPException(filename)
 
-        # Get the file path
-        settings = get_settings()
-        file_path = os.path.join(settings.upload_dir, filename)
+        # Download file from GridFS
+        file_content = await file_service.get_file_from_gridfs(filename)
 
-        if not os.path.exists(file_path):
-            logger.error(f"File {filename} exists in DB but not on disk at {file_path}")
-            raise FileNotFoundHTTPException(f"File {filename} not found on disk")
+        if not file_content:
+            logger.error(f"File {filename} exists in DB but not in GridFS")
+            raise FileNotFoundHTTPException(f"File {filename} not found in storage")
 
         # Track file view
         await file_service.track_file_view(filename)
 
-        # Return file as download
-        return FileResponse(
-            path=file_path,
-            filename=filename,
-            media_type='application/octet-stream'
+        # Return file as streaming response
+        from fastapi.responses import StreamingResponse
+        import io
+
+        return StreamingResponse(
+            io.BytesIO(file_content),
+            media_type='application/octet-stream',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            }
         )
 
     except (FileNotFoundHTTPException, ForbiddenHTTPException):

@@ -10,13 +10,17 @@ from app.api.dependencies import (
     get_current_admin,
     get_user_service_dep,
     get_conversation_service_dep,
-    get_file_service_dep
+    get_file_service_dep,
+    get_routing_service,
+    get_app_settings
 )
 from app.services.rag_service import RAGService
 from app.services.llm_service import LLMService
 from app.services.user_service import UserService
 from app.services.conversation_service import ConversationService
 from app.services.file_service import FileService
+from app.services.routing_service import RoutingService, RoutingStrategy
+from app.core.config import Settings
 from app.db.models import UserInDB
 from app.models.requests import RAGRequest, RAGLLMRequest
 from app.models.responses import (
@@ -111,7 +115,9 @@ async def rag_query(
     llm_service: LLMService = Depends(get_llm_service),
     user_service: UserService = Depends(get_user_service_dep),
     conversation_service: ConversationService = Depends(get_conversation_service_dep),
-    file_service: FileService = Depends(get_file_service_dep)
+    file_service: FileService = Depends(get_file_service_dep),
+    routing_service: RoutingService = Depends(get_routing_service),
+    settings: Settings = Depends(get_app_settings)
 ):
     """
     Query documents and get LLM-generated answer with user-based filtering and conversation support.
@@ -150,12 +156,40 @@ async def rag_query(
             content=request.prompt
         )
 
-        # Search documents with user permissions
-        search_results = await rag_service.search_documents_async(
-            query=request.prompt,
-            user=current_user,
-            n_results=request.n_results
-        )
+        # ADAPTIVE ROUTING: Classify query to determine if retrieval is needed
+        routing_result = None
+        chromadb_queried = True  # Default to True for backward compatibility
+
+        if settings.enable_adaptive_routing:
+            routing_result = await routing_service.classify_query(
+                query=request.prompt,
+                mode=settings.routing_mode,
+                confidence_threshold=settings.routing_confidence_threshold
+            )
+            logger.info(f"Routing decision: {routing_result['strategy']} "
+                       f"(confidence: {routing_result['confidence']}, "
+                       f"method: {routing_result['method']})")
+
+        # Determine if we need to query ChromaDB based on routing
+        skip_retrieval = (routing_result and
+                         routing_result['strategy'] == RoutingStrategy.NO_RETRIEVAL)
+
+        if skip_retrieval:
+            # Skip document retrieval for simple queries
+            logger.info(f"Skipping ChromaDB retrieval: {routing_result['reasoning']}")
+            chromadb_queried = False
+            search_results = {
+                "context": "",
+                "n_chunks_found": 0,
+                "relevant_chunks": []
+            }
+        else:
+            # Search documents with user permissions
+            search_results = await rag_service.search_documents_async(
+                query=request.prompt,
+                user=current_user,
+                n_results=request.n_results
+            )
 
         # Increment user query count
         await user_service.increment_query_count(str(current_user.id))
@@ -167,7 +201,8 @@ async def rag_query(
             model=request.model,
             language=request.language,
             instructions=request.instructions,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            enable_artifacts=request.enable_artifacts
         )
 
         # Extract unique source files
@@ -183,7 +218,10 @@ async def rag_query(
             if filename != 'Unknown' and filename not in files_already_used:
                 await file_service.track_file_usage(filename)
 
-        # Save assistant message to conversation with source files
+        # Extract artifacts from LLM response
+        artifacts = llm_response.get("artifacts", [])
+
+        # Save assistant message to conversation with source files and artifacts
         assistant_message_id = await conversation_service.add_message(
             conversation_id=conversation_id,
             role="assistant",
@@ -192,7 +230,8 @@ async def rag_query(
             source_files=source_files,
             metadata={
                 "sources": source_files,
-                "n_chunks": search_results["n_chunks_found"]
+                "n_chunks": search_results["n_chunks_found"],
+                "artifacts": artifacts
             }
         )
 
@@ -207,7 +246,12 @@ async def rag_query(
             relevant_chunks=search_results["relevant_chunks"],
             model_used=llm_response.get("model_used"),
             conversation_id=conversation_id,
-            message_id=assistant_message_id
+            message_id=assistant_message_id,
+            artifacts=artifacts,
+            # Adaptive RAG routing metadata
+            routing_strategy=routing_result['strategy'] if routing_result else None,
+            routing_confidence=routing_result['confidence'] if routing_result else None,
+            chromadb_queried=chromadb_queried
         )
 
     except (LLMException, LLMNotAvailableHTTPException):

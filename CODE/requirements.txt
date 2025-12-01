@@ -14,6 +14,8 @@ sentence-transformers
 pypdf
 python-docx
 openpyxl
+instructor
+ollama
 
 # MongoDB
 motor==3.3.2

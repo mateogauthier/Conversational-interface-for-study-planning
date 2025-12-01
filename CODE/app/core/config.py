@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     response_instructions: str = Field(default="")
     max_context_length: int = Field(default=1500)
 
+    # Adaptive RAG Routing Configuration
+    enable_adaptive_routing: bool = Field(default=True)
+    routing_mode: str = Field(default="hybrid")  # "heuristic", "llm", or "hybrid"
+    routing_confidence_threshold: float = Field(default=0.7)
+
     # CORS Configuration (accepts JSON array or comma-separated string)
     cors_origins: Union[str, List[str]] = Field(
         default=["http://localhost:3000", "http://localhost:8000"]

@@ -4,6 +4,54 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { ragApi, llmApi, conversationApi, feedbackApi, fileApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import mermaid from 'mermaid';
+
+// Mermaid diagram component
+function MermaidDiagram({ chart }) {
+  const ref = useRef(null);
+
+  // Sanitize mermaid code to remove common syntax errors
+  const sanitizeMermaid = (code) => {
+    let fixed = code;
+
+    // Remove // comments
+    fixed = fixed.split('\n').map(line => {
+      const commentIndex = line.indexOf('//');
+      if (commentIndex !== -1) {
+        return line.substring(0, commentIndex).trimEnd();
+      }
+      return line;
+    }).join('\n');
+
+    // Remove # comments ONLY in xychart data lines (not in other contexts)
+    // Pattern: line [...] # comment or bar [...] # comment
+    fixed = fixed.replace(/(line|bar)\s*(\[[^\]]+\])\s*#[^\n]*/gi, '$1 $2');
+
+    return fixed.trim();
+  };
+
+  useEffect(() => {
+    if (ref.current) {
+      try {
+        const sanitizedChart = sanitizeMermaid(chart);
+        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        mermaid.render('mermaid-' + Math.random().toString(36).substring(2, 11), sanitizedChart).then(({ svg }) => {
+          ref.current.innerHTML = svg;
+        }).catch((error) => {
+          console.error('Mermaid rendering error:', error);
+          ref.current.innerHTML = `<pre style="color: red;">Mermaid Error: ${error.message}</pre>`;
+        });
+      } catch (error) {
+        console.error('Mermaid initialization error:', error);
+        ref.current.innerHTML = `<pre style="color: red;">Mermaid Error: ${error.message}</pre>`;
+      }
+    }
+  }, [chart]);
+
+  return <div ref={ref} className="mermaid-diagram" />;
+}
 
 function HomePage() {
   const { t } = useTranslation();
@@ -21,6 +69,8 @@ function HomePage() {
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Library renders everything inline - no separate artifact panel needed
 
   const messagesEndRef = useRef(null);
 
@@ -142,10 +192,12 @@ function HomePage() {
         // Update conversation ID from response
         setCurrentConversationId(response.conversation_id);
 
+        // Library-based rendering: Keep full markdown content
+        // @uiw/react-markdown-preview handles tables, code, mermaid automatically
         const assistantMessage = {
           id: response.message_id,
           type: 'assistant',
-          content: response.answer,
+          content: response.answer, // Full markdown - library will render everything
           sources: response.sources,
           chunks: response.relevant_chunks,
           model: response.model_used,
@@ -329,36 +381,43 @@ function HomePage() {
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* Header */}
-        <div
-          style={{
-            padding: '1rem 1.5rem',
-            borderBottom: '1px solid #e2e8f0',
-            backgroundColor: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
-          }}
-        >
-          {!sidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="btn btn-secondary"
-              style={{ padding: '0.5rem', minWidth: 'auto' }}
-              title={t('home.openSidebar')}
-            >
-              <Menu size={20} />
-            </button>
-          )}
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <MessageCircle size={24} />
-              {currentConversationId ? t('home.continueConversation') : t('home.title')}
-            </h2>
+      {/* Main Content Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minWidth: 0 }}>
+        {/* Chat Area */}
+        <div style={{
+          flex: '1 1 100%',
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0,
+        }}>
+          {/* Header */}
+          <div
+            style={{
+              padding: '1rem 1.5rem',
+              borderBottom: '1px solid #e2e8f0',
+              backgroundColor: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+            }}
+          >
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem', minWidth: 'auto' }}
+                title={t('home.openSidebar')}
+              >
+                <Menu size={20} />
+              </button>
+            )}
+            <div style={{ flex: 1 }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MessageCircle size={24} />
+                {currentConversationId ? t('home.continueConversation') : t('home.title')}
+              </h2>
+            </div>
           </div>
-        </div>
 
         {/* Chat Messages */}
         <div
@@ -382,7 +441,10 @@ function HomePage() {
           )}
 
           {messages.map((message, index) => (
-            <ChatMessage key={index} message={message} />
+            <ChatMessage
+              key={index}
+              message={message}
+            />
           ))}
 
           {queryLoading && (
@@ -397,35 +459,37 @@ function HomePage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Chat Input */}
-        <div
-          style={{
-            padding: '1rem 1.5rem',
-            backgroundColor: '#ffffff',
-            borderTop: '1px solid #e2e8f0',
-          }}
-        >
-          <form onSubmit={handleQuerySubmit} style={{ display: 'flex', gap: '0.75rem' }}>
-            <input
-              type="text"
-              className="input chat-input"
-              placeholder={t('home.placeholder')}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={queryLoading}
-              style={{ flex: 1 }}
-            />
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={queryLoading || !query.trim()}
-              style={{ minWidth: '100px' }}
-            >
-              <Send size={20} />
-              {t('home.send')}
-            </button>
-          </form>
+          {/* Chat Input */}
+          <div
+            style={{
+              padding: '1rem 1.5rem',
+              backgroundColor: '#ffffff',
+              borderTop: '1px solid #e2e8f0',
+            }}
+          >
+            <form onSubmit={handleQuerySubmit} style={{ display: 'flex', gap: '0.75rem' }}>
+              <input
+                type="text"
+                className="input chat-input"
+                placeholder={t('home.placeholder')}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={queryLoading}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={queryLoading || !query.trim()}
+                style={{ minWidth: '100px' }}
+              >
+                <Send size={20} />
+                {t('home.send')}
+              </button>
+            </form>
+          </div>
         </div>
+
       </div>
     </div>
   );
@@ -489,7 +553,37 @@ function ChatMessage({ message }) {
   return (
     <div className={`chat-message ${message.type}`} style={{ marginBottom: '1rem' }}>
       <div className="chat-message-content">
-        <ReactMarkdown>{message.content}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          components={{
+            code({ node, inline, className, children, ...props }) {
+              const match = /language-(\w+)/.exec(className || '');
+              const language = match ? match[1] : '';
+              const code = String(children).replace(/\n$/, '');
+
+              // Render mermaid diagrams with custom component
+              if (language === 'mermaid') {
+                return <MermaidDiagram chart={code} />;
+              }
+
+              // Regular code blocks
+              return !inline ? (
+                <pre className={className} style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px', overflow: 'auto' }}>
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                </pre>
+              ) : (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              );
+            }
+          }}
+        >
+          {message.content}
+        </ReactMarkdown>
       </div>
 
       {message.sources && message.sources.length > 0 && (
@@ -497,25 +591,25 @@ function ChatMessage({ message }) {
           <div
             className="chat-sources-title"
             style={{
-              cursor: message.sources.length > 1 ? 'pointer' : 'default',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
             }}
-            onClick={() => message.sources.length > 1 && setSourcesExpanded(!sourcesExpanded)}
+            onClick={() => setSourcesExpanded(!sourcesExpanded)}
           >
             <div>
               <FileText size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
               {t('home.sources')} ({message.sources.length})
             </div>
-            {message.sources.length > 1 && (
-              sourcesExpanded ?
-                <ChevronUp size={16} style={{ color: '#718096' }} /> :
-                <ChevronDown size={16} style={{ color: '#718096' }} />
-            )}
+            {sourcesExpanded ?
+              <ChevronUp size={16} style={{ color: '#718096' }} /> :
+              <ChevronDown size={16} style={{ color: '#718096' }} />
+            }
           </div>
-          <div className="chat-sources-list">
-            {(sourcesExpanded ? message.sources : message.sources.slice(0, 1)).map((source, idx) => {
+          {sourcesExpanded && (
+            <div className="chat-sources-list">
+              {message.sources.map((source, idx) => {
               const formatted = formatFileName(source);
               return (
                 <button
@@ -554,12 +648,13 @@ function ChatMessage({ message }) {
                 </button>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {message.model && (
             <div style={{ fontSize: '0.75rem', color: '#a0aec0' }}>
               {t('home.model')}: {message.model}

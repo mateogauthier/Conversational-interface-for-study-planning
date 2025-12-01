@@ -3,10 +3,15 @@
 import json
 import logging
 import httpx
-from typing import Optional, Dict, Any, List
+import re
+from typing import Optional, Dict, Any, List, Tuple
+
+import instructor
+from ollama import AsyncClient
 
 from app.core.config import get_settings
 from app.core.exceptions import LLMException, LLMNotAvailableHTTPException
+from app.models.llm_responses import StructuredLLMResponse
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -20,12 +25,31 @@ class LLMService:
         self.default_model = settings.ollama_model
         self.timeout = settings.ollama_timeout
         self._client: Optional[httpx.AsyncClient] = None
+        self._instructor_client = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create async HTTP client."""
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=self.timeout)
         return self._client
+
+    def _get_instructor_client(self):
+        """Get or create Instructor client for structured outputs."""
+        if self._instructor_client is None:
+            # Create Ollama async client
+            from openai import AsyncOpenAI
+
+            # Ollama has OpenAI-compatible API
+            ollama_client = AsyncOpenAI(
+                base_url=f"{self.base_url}/v1",
+                api_key="ollama",  # Ollama doesn't require a real API key
+            )
+            # Wrap with Instructor using JSON mode (more compatible than tool calling)
+            self._instructor_client = instructor.patch(
+                ollama_client,
+                mode=instructor.Mode.JSON
+            )
+        return self._instructor_client
 
     async def close(self):
         """Close the HTTP client."""
@@ -149,9 +173,10 @@ class LLMService:
         model: Optional[str] = None,
         language: Optional[str] = None,
         instructions: Optional[str] = None,
-        conversation_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        enable_artifacts: bool = True
     ) -> Dict[str, Any]:
-        """Generate a response with provided context and optional conversation history."""
+        """Generate a response with provided context and optional conversation history using Instructor."""
         from app.core.config import get_settings
         settings = get_settings()
 
@@ -164,8 +189,11 @@ class LLMService:
         # Determine language instruction
         language_instruction = self._get_language_instruction(prompt, language, settings)
 
-        # Combine custom instructions with language instruction
-        all_instructions = [language_instruction]
+        # Get role-based system prompt
+        role_prompt = self._get_academic_advisor_prompt(language)
+
+        # Combine custom instructions with language instruction and role
+        all_instructions = [role_prompt, language_instruction]
         if instructions:
             all_instructions.append(instructions)
         if settings.response_instructions:
@@ -182,8 +210,50 @@ class LLMService:
                 history_lines.append(f"{role_label}: {msg['content']}")
             history_section = "\n".join(history_lines) + "\n\n"
 
-        # Create enhanced prompt with optional history, context, and current question
-        enhanced_prompt = f"""{history_section}Context from documents: {context}
+        # Determine model to use
+        model = model or self.default_model
+
+        # Ensure model is available
+        if not await self.is_available():
+            raise LLMNotAvailableHTTPException("Ollama service is not available")
+
+        if not await self.ensure_model(model):
+            logger.warning(f"Model {model} not available, falling back to {self.default_model}")
+            model = self.default_model
+            if not await self.ensure_model(model):
+                raise LLMException(f"Default model {self.default_model} is not available")
+
+        try:
+            # MARKDOWN-FIRST APPROACH (Client-side parsing)
+            # Generate pure markdown - let frontend extract artifacts
+            markdown_instruction = self._get_markdown_generation_instruction(language)
+
+            # Create enhanced prompt with markdown instructions
+            enhanced_prompt = f"""{combined_instructions}
+
+{markdown_instruction}
+
+{history_section}Context from documents: {context}
+
+Current question: {prompt}
+
+Answer:"""
+
+            # Generate regular response (markdown)
+            result = await self.generate_response(enhanced_prompt, model)
+
+            # Backend sends empty artifacts array - client will extract them
+            result["artifacts"] = []
+
+            logger.info(f"Generated markdown response - client will extract artifacts")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error in generate_with_context: {str(e)}")
+            # Fallback to regex-based extraction
+            logger.info("Falling back to regex-based artifact extraction")
+            enhanced_prompt = f"""{history_section}Context from documents: {context}
 
 Current question: {prompt}
 
@@ -191,7 +261,83 @@ Instructions: {combined_instructions} Base your answer on the provided context a
 
 Answer:"""
 
-        return await self.generate_response(enhanced_prompt, model)
+            result = await self.generate_response(enhanced_prompt, model)
+
+            if enable_artifacts:
+                response_text = result.get("response", "")
+                clean_text, artifacts = self._extract_artifacts(response_text)
+                result["response"] = clean_text
+                result["artifacts"] = artifacts
+            else:
+                result["artifacts"] = []
+
+            return result
+
+    def _get_academic_advisor_prompt(self, language: Optional[str]) -> str:
+        """Generate academic advisor system prompt based on language."""
+        is_spanish = language == "spanish" or language == "auto"
+
+        if is_spanish:
+            return """Eres un asesor académico amigable y empático de la universidad. Tu objetivo principal es ayudar al estudiante a:
+
+1. **Planificar su progreso académico**: Ayúdalo a entender qué materias ha completado, cuáles le faltan, y cómo puede organizarse para terminar su carrera.
+
+2. **Tomar decisiones informadas**: Oriéntalo sobre qué materias tomar próximamente, cuántas puede manejar según su historial, y cómo balancear su carga académica.
+
+3. **Guiar su carrera profesional**: Ayúdalo a identificar sus fortalezas académicas (materias con mejores notas), áreas de mejora, y cómo sus decisiones actuales impactan su futuro profesional.
+
+4. **Motivar y apoyar**: Sé positivo, reconoce sus logros, y ofrece consejos prácticos cuando enfrente desafíos.
+
+**Estilo de comunicación:**
+- Sé amigable, natural y conversacional (como hablarías con un amigo)
+- Usa un tono cálido y empático
+- Personaliza tus respuestas según el contexto del estudiante
+- Celebra sus éxitos y ofrece apoyo en los desafíos
+- Sé específico y práctico en tus recomendaciones
+- Usa visualizaciones (tablas, gráficas) cuando ayuden a clarificar información
+
+**Ejemplos de buen tono:**
+- ❌ "Según los datos, has aprobado 8 materias."
+- ✅ "¡Excelente! Ya has aprobado 8 materias. Estás haciendo un buen progreso en tu carrera."
+
+- ❌ "Tu promedio es 72%."
+- ✅ "Tu promedio actual es de 72%. Hay espacio para mejorar, y puedo ayudarte a identificar estrategias para subirlo."
+
+- ❌ "Debes tomar Cálculo 3."
+- ✅ "Te recomiendo considerar Cálculo 3 para el próximo semestre, ya que completaste Cálculo 2 con un buen desempeño del 74%."
+
+Recuerda: No eres solo una fuente de información, eres un mentor académico que genuinamente se preocupa por el éxito del estudiante."""
+
+        else:
+            return """You are a friendly and empathetic academic advisor at the university. Your main goal is to help students:
+
+1. **Plan their academic progress**: Help them understand which courses they've completed, what's remaining, and how to organize their path to graduation.
+
+2. **Make informed decisions**: Guide them on which courses to take next, how many they can handle based on their history, and how to balance their academic load.
+
+3. **Navigate their professional career**: Help them identify their academic strengths (courses with best grades), areas for improvement, and how their current decisions impact their professional future.
+
+4. **Motivate and support**: Be positive, recognize their achievements, and offer practical advice when facing challenges.
+
+**Communication style:**
+- Be friendly, natural, and conversational (like talking to a friend)
+- Use a warm and empathetic tone
+- Personalize your responses based on the student's context
+- Celebrate their successes and offer support during challenges
+- Be specific and practical in your recommendations
+- Use visualizations (tables, charts) when they help clarify information
+
+**Examples of good tone:**
+- ❌ "According to the data, you have passed 8 courses."
+- ✅ "Excellent! You've already passed 8 courses. You're making good progress in your degree."
+
+- ❌ "Your average is 72%."
+- ✅ "Your current average is 72%. There's room for improvement, and I can help you identify strategies to raise it."
+
+- ❌ "You must take Calculus 3."
+- ✅ "I recommend considering Calculus 3 for next semester, since you completed Calculus 2 with a solid 74% performance."
+
+Remember: You're not just a source of information, you're an academic mentor who genuinely cares about the student's success."""
 
     def _get_language_instruction(self, prompt: str, language: Optional[str], settings) -> str:
         """Generate appropriate language instruction based on preferences and detection."""
@@ -209,6 +355,407 @@ Answer:"""
                 return "Answer in the same language as the question."
         else:
             return f"Answer in {language}."
+
+    def _get_artifact_instruction(self, language: Optional[str]) -> str:
+        """Generate artifact generation instructions based on language (legacy, for regex fallback)."""
+        is_spanish = language == "spanish"
+
+        if is_spanish:
+            return """Si necesitas mostrar código, ejemplos, tablas, o visualizaciones, puedes generar artefactos usando esta sintaxis:
+<artifact type="tipo" language="lenguaje" title="título">
+contenido aquí
+</artifact>
+
+Tipos soportados: code (código), html (HTML), table (tabla), json (JSON), mermaid (diagrama).
+Usa 'language' solo para código (python, javascript, etc.)."""
+        else:
+            return """If you need to show code, examples, tables, or visualizations, you can generate artifacts using this syntax:
+<artifact type="type" language="language" title="title">
+content here
+</artifact>
+
+Supported types: code, html, table, json, mermaid.
+Use 'language' only for code artifacts (python, javascript, etc.)."""
+
+    def _get_instructor_artifact_instruction(self, language: Optional[str]) -> str:
+        """Generate artifact instructions for Instructor-based structured output."""
+        is_spanish = language == "spanish"
+
+        if is_spanish:
+            return """IMPORTANTE: Cuando el usuario pida una tabla, código, diagrama, gráfica o cualquier visualización, DEBES crear un artifact.
+
+Reglas para artifacts:
+- SIEMPRE usa artifacts para: tablas, código, diagramas, gráficas, ejemplos de código, JSON, visualizaciones
+- NO incluyas tablas markdown en el campo 'text' - ponlas en artifacts
+- type: "code" (código), "html" (tablas HTML), "table" (datos tabulares), "json" (JSON), "mermaid" (diagramas/gráficas)
+- title: Un título descriptivo claro
+- content: El contenido completo
+- language: (solo para type="code") python, javascript, java, etc.
+
+TIPOS ESPECÍFICOS:
+- Tablas de datos → type="html" con <table> HTML
+- Gráficas/gráficos/charts → type="mermaid" con sintaxis mermaid (xychart, pie, bar)
+- Diagramas de flujo → type="mermaid" con sintaxis mermaid (flowchart, sequenceDiagram)
+- Código fuente → type="code" con language especificado
+
+SINTAXIS MERMAID IMPORTANTE:
+- En flowcharts, SIEMPRE pon texto de nodos entre comillas: A["Texto aquí"]
+- NUNCA uses corchetes sin comillas: A[Texto] ❌ INCORRECTO
+- Usa comillas dobles escapadas para texto: A[\\"Mi texto\\"]
+- Para porcentajes o símbolos especiales: A[\\"72%\\"], B[\\"Nota: 85\\"]
+
+Ejemplo de gráfica:
+{
+  "text": "Aquí está la gráfica de tus notas:",
+  "artifacts": [
+    {
+      "type": "mermaid",
+      "title": "Gráfica de Notas por Semestre",
+      "content": "xychart-beta\\n  title \\"Notas por Semestre\\"\\n  x-axis [S1, S2, S3]\\n  y-axis \\"Nota\\" 0 --> 100\\n  line [70, 85, 92]"
+    }
+  ]
+}
+
+Ejemplo de diagrama de flujo:
+{
+  "text": "Aquí está el diagrama:",
+  "artifacts": [
+    {
+      "type": "mermaid",
+      "title": "Diagrama de Progreso",
+      "content": "flowchart TD\\n  A[\\"Inicio\\"] --> B[\\"Paso 1\\"]\\n  B --> C[\\"Fin\\"]"
+    }
+  ]
+}
+
+Ejemplo de tabla:
+{
+  "text": "Aquí está la tabla solicitada:",
+  "artifacts": [
+    {
+      "type": "html",
+      "title": "Tabla de Datos",
+      "content": "<table>...</table>"
+    }
+  ]
+}"""
+        else:
+            return """IMPORTANT: When the user asks for a table, code, diagram, chart, graph or any visualization, you MUST create an artifact.
+
+Artifact rules:
+- ALWAYS use artifacts for: tables, code, diagrams, charts, graphs, code examples, JSON, visualizations
+- DO NOT include markdown tables in the 'text' field - put them in artifacts
+- type: "code" (code), "html" (HTML tables), "table" (tabular data), "json" (JSON), "mermaid" (diagrams/charts)
+- title: A clear descriptive title
+- content: The complete content
+- language: (only for type="code") python, javascript, java, etc.
+
+SPECIFIC TYPES:
+- Data tables → type="html" with HTML <table>
+- Charts/graphs → type="mermaid" with mermaid syntax (xychart, pie, bar)
+- Flow diagrams → type="mermaid" with mermaid syntax (flowchart, sequenceDiagram)
+- Source code → type="code" with language specified
+
+IMPORTANT MERMAID SYNTAX:
+- In flowcharts, ALWAYS put node text in quotes: A["Text here"]
+- NEVER use brackets without quotes: A[Text] ❌ WRONG
+- Use escaped double quotes for text: A[\\"My text\\"]
+- For percentages or special chars: A[\\"72%\\"], B[\\"Grade: 85\\"]
+
+Example chart artifact:
+{
+  "text": "Here is your grade chart:",
+  "artifacts": [
+    {
+      "type": "mermaid",
+      "title": "Grades by Semester",
+      "content": "xychart-beta\\n  title \\"Grades by Semester\\"\\n  x-axis [S1, S2, S3]\\n  y-axis \\"Grade\\" 0 --> 100\\n  line [70, 85, 92]"
+    }
+  ]
+}
+
+Example flowchart:
+{
+  "text": "Here is the diagram:",
+  "artifacts": [
+    {
+      "type": "mermaid",
+      "title": "Progress Diagram",
+      "content": "flowchart TD\\n  A[\\"Start\\"] --> B[\\"Step 1\\"]\\n  B --> C[\\"End\\"]"
+    }
+  ]
+}
+
+Example table artifact:
+{
+  "text": "Here is the requested table:",
+  "artifacts": [
+    {
+      "type": "html",
+      "title": "Data Table",
+      "content": "<table>...</table>"
+    }
+  ]
+}"""
+
+    def _get_markdown_generation_instruction(self, language: Optional[str]) -> str:
+        """
+        Generate markdown-first instructions for LLM.
+        Client-side parsing will extract artifacts from markdown.
+        """
+        is_spanish = language == "spanish"
+
+        if is_spanish:
+            return """IMPORTANTE: Usa formato markdown estándar para todas las respuestas.
+
+FORMATO PARA VISUALIZACIONES:
+
+1. **Tablas**: Usa tablas markdown estándar con pipes (|)
+   Ejemplo:
+   | Columna 1 | Columna 2 | Columna 3 |
+   |-----------|-----------|-----------|
+   | Dato 1    | Dato 2    | Dato 3    |
+   | Dato 4    | Dato 5    | Dato 6    |
+
+2. **Código**: Usa bloques de código con triple backtick (```)
+   Ejemplo:
+   ```python
+   def hello():
+       print("Hello world")
+   ```
+
+3. **Diagramas y Gráficas**: Usa bloques de código mermaid
+   Ejemplo (diagrama de flujo):
+   ```mermaid
+   flowchart TD
+       A["Inicio"] --> B["Paso 1"]
+       B --> C["Paso 2"]
+       C --> D["Fin"]
+   ```
+
+   Ejemplo (gráfica):
+   ```mermaid
+   xychart-beta
+       title "Notas por Semestre"
+       x-axis [S1, S2, S3, S4]
+       y-axis "Nota" 0 --> 100
+       line [70, 75, 85, 92]
+   ```
+
+   Ejemplo (gráfica de barras):
+   ```mermaid
+   xychart-beta
+       title "Comparación de Notas"
+       x-axis [Mat1, Mat2, Mat3]
+       y-axis "Nota" 0 --> 100
+       bar [85, 90, 78]
+   ```
+
+SINTAXIS MERMAID CRÍTICA:
+- SIEMPRE usa comillas para el texto de los nodos en flowcharts: A["Texto aquí"]
+- NUNCA uses corchetes sin comillas: A[Texto] ❌ INCORRECTO
+- Para porcentajes o símbolos: A["72%"], B["Nota: 85"]
+- En xychart: NO uses "label" después de line/bar - solo datos: line [1, 2, 3]
+- En xychart: NO uses comentarios (#) en las líneas de datos - son inválidos
+- Títulos SIEMPRE entre comillas: title "Mi Título"
+- NO uses comentarios (//) ni (#) en mermaid - son inválidos
+
+El cliente extraerá automáticamente las tablas, código y diagramas del markdown."""
+
+        else:
+            return """IMPORTANT: Use standard markdown format for all responses.
+
+FORMAT FOR VISUALIZATIONS:
+
+1. **Tables**: Use standard markdown tables with pipes (|)
+   Example:
+   | Column 1 | Column 2 | Column 3 |
+   |----------|----------|----------|
+   | Data 1   | Data 2   | Data 3   |
+   | Data 4   | Data 5   | Data 6   |
+
+2. **Code**: Use code blocks with triple backticks (```)
+   Example:
+   ```python
+   def hello():
+       print("Hello world")
+   ```
+
+3. **Diagrams and Charts**: Use mermaid code blocks
+   Example (flowchart):
+   ```mermaid
+   flowchart TD
+       A["Start"] --> B["Step 1"]
+       B --> C["Step 2"]
+       C --> D["End"]
+   ```
+
+   Example (chart):
+   ```mermaid
+   xychart-beta
+       title "Grades by Semester"
+       x-axis [S1, S2, S3, S4]
+       y-axis "Grade" 0 --> 100
+       line [70, 75, 85, 92]
+   ```
+
+   Example (bar chart):
+   ```mermaid
+   xychart-beta
+       title "Grade Comparison"
+       x-axis [Math1, Math2, Math3]
+       y-axis "Grade" 0 --> 100
+       bar [85, 90, 78]
+   ```
+
+CRITICAL MERMAID SYNTAX:
+- ALWAYS use quotes for node text in flowcharts: A["Text here"]
+- NEVER use brackets without quotes: A[Text] ❌ WRONG
+- For percentages or symbols: A["72%"], B["Grade: 85"]
+- In xychart: NO "label" after line/bar - just data: line [1, 2, 3]
+- In xychart: NO comments (#) in data lines - they are invalid
+- Titles ALWAYS quoted: title "My Title"
+- NO comments (//) or (#) in mermaid - they are invalid
+
+The client will automatically extract tables, code, and diagrams from markdown."""
+
+    def _extract_artifacts(self, response_text: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Extract artifacts from LLM response text.
+
+        Returns:
+            Tuple of (clean_text_without_artifacts, list_of_artifacts)
+        """
+        artifacts = []
+
+        # Pattern to match <artifact> tags with attributes
+        # Example: <artifact type="code" language="python" title="Example">content</artifact>
+        pattern = r'<artifact\s+([^>]+)>(.*?)</artifact>'
+
+        def extract_artifact(match):
+            # Parse attributes
+            attrs_str = match.group(1)
+            content = match.group(2).strip()
+
+            # Extract attributes
+            attr_pattern = r'(\w+)="([^"]*)"'
+            attrs = dict(re.findall(attr_pattern, attrs_str))
+
+            artifact = {
+                "type": attrs.get("type", "code"),
+                "language": attrs.get("language"),
+                "title": attrs.get("title"),
+                "content": content
+            }
+
+            artifacts.append(artifact)
+
+            # Return empty string to completely remove artifact from chat text
+            return ""
+
+        # Remove artifacts from response and collect them
+        clean_text = re.sub(pattern, extract_artifact, response_text, flags=re.DOTALL)
+
+        # Fallback: detect raw HTML tables (when LLM doesn't use artifact tags)
+        table_pattern = r'<table>.*?</table>'
+
+        def extract_table(match):
+            table_content = match.group(0)
+
+            artifact = {
+                "type": "html",
+                "language": None,
+                "title": "Table",
+                "content": table_content
+            }
+
+            artifacts.append(artifact)
+
+            # Return empty string to remove table from chat
+            return ""
+
+        # Extract raw HTML tables
+        clean_text = re.sub(table_pattern, extract_table, clean_text, flags=re.DOTALL | re.IGNORECASE)
+
+        # Fallback: detect code blocks with triple backticks
+        code_pattern = r'```(\w+)?\n(.*?)```'
+
+        def extract_code(match):
+            language = match.group(1) or "text"
+            code_content = match.group(2).strip()
+
+            artifact = {
+                "type": "code",
+                "language": language,
+                "title": f"{language.capitalize()} Code" if language else "Code",
+                "content": code_content
+            }
+
+            artifacts.append(artifact)
+
+            # Return empty string to remove code block from chat
+            return ""
+
+        # Extract code blocks
+        clean_text = re.sub(code_pattern, extract_code, clean_text, flags=re.DOTALL)
+
+        # Fallback: detect markdown tables
+        # Pattern matches tables with | separators and at least a header row and separator row
+        markdown_table_pattern = r'(\|[^\n]+\|\n\|[-:\s|]+\|\n(?:\|[^\n]+\|\n?)+)'
+
+        def extract_markdown_table(match):
+            table_content = match.group(1).strip()
+
+            # Convert markdown table to HTML for better rendering
+            lines = table_content.split('\n')
+            if len(lines) < 2:
+                return match.group(0)  # Not a valid table
+
+            # Extract headers
+            headers = [cell.strip() for cell in lines[0].split('|')[1:-1]]
+
+            # Skip separator line (index 1)
+            # Extract rows
+            rows = []
+            for line in lines[2:]:
+                if line.strip():
+                    cells = [cell.strip() for cell in line.split('|')[1:-1]]
+                    rows.append(cells)
+
+            # Build HTML table
+            html_table = '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+            html_table += '  <thead>\n    <tr>\n'
+            for header in headers:
+                html_table += f'      <th style="padding: 8px; background-color: #f2f2f2;">{header}</th>\n'
+            html_table += '    </tr>\n  </thead>\n  <tbody>\n'
+            for row in rows:
+                html_table += '    <tr>\n'
+                for cell in row:
+                    html_table += f'      <td style="padding: 8px;">{cell}</td>\n'
+                html_table += '    </tr>\n'
+            html_table += '  </tbody>\n</table>'
+
+            artifact = {
+                "type": "html",
+                "language": None,
+                "title": "Table",
+                "content": html_table
+            }
+
+            artifacts.append(artifact)
+
+            # Return empty string to remove table from chat
+            return ""
+
+        # Extract markdown tables
+        clean_text = re.sub(markdown_table_pattern, extract_markdown_table, clean_text, flags=re.MULTILINE)
+
+        # Clean up excessive newlines
+        clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
+
+        logger.info(f"Extracted {len(artifacts)} artifact(s) from response")
+
+        return clean_text, artifacts
 
     async def get_service_info(self) -> Dict[str, Any]:
         """Get information about the LLM service."""

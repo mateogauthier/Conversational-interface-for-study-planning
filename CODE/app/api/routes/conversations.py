@@ -115,7 +115,10 @@ async def get_conversation(
                 role=msg["role"],
                 content=msg["content"],
                 timestamp=msg["timestamp"],
-                model_used=msg.get("model_used")
+                model_used=msg.get("model_used"),
+                source_files=msg.get("source_files", []),
+                feedback=msg.get("feedback"),
+                artifacts=msg.get("metadata", {}).get("artifacts", [])
             )
             for msg in messages
         ]

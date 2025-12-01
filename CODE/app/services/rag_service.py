@@ -242,7 +242,7 @@ class RAGService:
         """
         Retrieve relevant document chunks based on user permissions.
 
-        Students: Search their private files + all public files
+        Students: Search their private files first, then supplement with public files
         Admins: Search only public files
 
         Args:
@@ -256,20 +256,22 @@ class RAGService:
         try:
             # Generate embedding for the query
             query_embedding = self.embedding_model.encode([query]).tolist()[0]
+            max_results = min(n_results, settings.max_chunks_for_context)
 
-            # Build permission filter based on role
+            relevant_chunks = []
+            sources = []
+
+            # Use unified search with permission filter
+            # This allows ChromaDB to rank ALL accessible documents by relevance
+            # (both private and public files) instead of prioritizing private files
             where_filter = self._build_permission_filter(user)
-
-            # Search the collection with filters
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(n_results, settings.max_chunks_for_context),
+                n_results=max_results,
                 where=where_filter,
                 include=['documents', 'metadatas', 'distances']
             )
 
-            # Format results
-            relevant_chunks = []
             if results['documents'] and results['documents'][0]:
                 for i in range(len(results['documents'][0])):
                     chunk = RelevantChunk(
@@ -278,10 +280,13 @@ class RAGService:
                         distance=results['distances'][0][i]
                     )
                     relevant_chunks.append(chunk)
+                    source = results['metadatas'][0][i].get('source', 'unknown')
+                    if source not in sources:
+                        sources.append(source)
 
             logger.info(
                 f"Retrieved {len(relevant_chunks)} relevant chunks for user {user.email} "
-                f"(role: {user.role})"
+                f"(role: {user.role}) from sources: {sources}"
             )
             return relevant_chunks
 
