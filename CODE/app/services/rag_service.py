@@ -261,72 +261,28 @@ class RAGService:
             relevant_chunks = []
             sources = []
 
-            # For students, search private files first
-            if user.role == settings.student_role:
-                # Query private files first
-                private_results = self.collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=max_results,
-                    where={"user_id": str(user.id)},
-                    include=['documents', 'metadatas', 'distances']
-                )
+            # Use unified search with permission filter
+            # This allows ChromaDB to rank ALL accessible documents by relevance
+            # (both private and public files) instead of prioritizing private files
+            where_filter = self._build_permission_filter(user)
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=max_results,
+                where=where_filter,
+                include=['documents', 'metadatas', 'distances']
+            )
 
-                # Add private file results
-                if private_results['documents'] and private_results['documents'][0]:
-                    for i in range(len(private_results['documents'][0])):
-                        chunk = RelevantChunk(
-                            content=private_results['documents'][0][i],
-                            metadata=private_results['metadatas'][0][i],
-                            distance=private_results['distances'][0][i]
-                        )
-                        relevant_chunks.append(chunk)
-                        source = private_results['metadatas'][0][i].get('source', 'unknown')
-                        if source not in sources:
-                            sources.append(source)
-
-                # If we still need more results, search public files
-                remaining = max_results - len(relevant_chunks)
-                if remaining > 0:
-                    public_results = self.collection.query(
-                        query_embeddings=[query_embedding],
-                        n_results=remaining,
-                        where={"is_public": True},
-                        include=['documents', 'metadatas', 'distances']
+            if results['documents'] and results['documents'][0]:
+                for i in range(len(results['documents'][0])):
+                    chunk = RelevantChunk(
+                        content=results['documents'][0][i],
+                        metadata=results['metadatas'][0][i],
+                        distance=results['distances'][0][i]
                     )
-
-                    if public_results['documents'] and public_results['documents'][0]:
-                        for i in range(len(public_results['documents'][0])):
-                            chunk = RelevantChunk(
-                                content=public_results['documents'][0][i],
-                                metadata=public_results['metadatas'][0][i],
-                                distance=public_results['distances'][0][i]
-                            )
-                            relevant_chunks.append(chunk)
-                            source = public_results['metadatas'][0][i].get('source', 'unknown')
-                            if source not in sources:
-                                sources.append(source)
-
-            else:
-                # For admins and others, just query public files
-                where_filter = self._build_permission_filter(user)
-                results = self.collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=max_results,
-                    where=where_filter,
-                    include=['documents', 'metadatas', 'distances']
-                )
-
-                if results['documents'] and results['documents'][0]:
-                    for i in range(len(results['documents'][0])):
-                        chunk = RelevantChunk(
-                            content=results['documents'][0][i],
-                            metadata=results['metadatas'][0][i],
-                            distance=results['distances'][0][i]
-                        )
-                        relevant_chunks.append(chunk)
-                        source = results['metadatas'][0][i].get('source', 'unknown')
-                        if source not in sources:
-                            sources.append(source)
+                    relevant_chunks.append(chunk)
+                    source = results['metadatas'][0][i].get('source', 'unknown')
+                    if source not in sources:
+                        sources.append(source)
 
             logger.info(
                 f"Retrieved {len(relevant_chunks)} relevant chunks for user {user.email} "

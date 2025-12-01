@@ -556,7 +556,9 @@ SINTAXIS MERMAID CRÍTICA:
 - NUNCA uses corchetes sin comillas: A[Texto] ❌ INCORRECTO
 - Para porcentajes o símbolos: A["72%"], B["Nota: 85"]
 - En xychart: NO uses "label" después de line/bar - solo datos: line [1, 2, 3]
+- En xychart: NO uses comentarios (#) en las líneas de datos - son inválidos
 - Títulos SIEMPRE entre comillas: title "Mi Título"
+- NO uses comentarios (//) ni (#) en mermaid - son inválidos
 
 El cliente extraerá automáticamente las tablas, código y diagramas del markdown."""
 
@@ -611,7 +613,9 @@ CRITICAL MERMAID SYNTAX:
 - NEVER use brackets without quotes: A[Text] ❌ WRONG
 - For percentages or symbols: A["72%"], B["Grade: 85"]
 - In xychart: NO "label" after line/bar - just data: line [1, 2, 3]
+- In xychart: NO comments (#) in data lines - they are invalid
 - Titles ALWAYS quoted: title "My Title"
+- NO comments (//) or (#) in mermaid - they are invalid
 
 The client will automatically extract tables, code, and diagrams from markdown."""
 

@@ -117,7 +117,18 @@ function sanitizeMermaid(content) {
     '$1 $2'
   );
 
-  // Fix 4: Remove common trailing spaces/newlines
+  // Fix 4: Remove comments from mermaid diagrams
+  // Problem: // comments are not valid in mermaid syntax
+  // Remove anything after // on each line
+  fixed = fixed.split('\n').map(line => {
+    const commentIndex = line.indexOf('//');
+    if (commentIndex !== -1) {
+      return line.substring(0, commentIndex).trimEnd();
+    }
+    return line;
+  }).join('\n');
+
+  // Fix 5: Remove common trailing spaces/newlines
   fixed = fixed.trim();
 
   return fixed;

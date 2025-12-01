@@ -1,11 +1,57 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp, Eye } from 'lucide-react';
+import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { ragApi, llmApi, conversationApi, feedbackApi, fileApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
-import ArtifactViewer from '../components/ArtifactViewer';
-import { extractArtifactsFromMarkdown } from '../services/markdownParser';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import mermaid from 'mermaid';
+
+// Mermaid diagram component
+function MermaidDiagram({ chart }) {
+  const ref = useRef(null);
+
+  // Sanitize mermaid code to remove common syntax errors
+  const sanitizeMermaid = (code) => {
+    let fixed = code;
+
+    // Remove // comments
+    fixed = fixed.split('\n').map(line => {
+      const commentIndex = line.indexOf('//');
+      if (commentIndex !== -1) {
+        return line.substring(0, commentIndex).trimEnd();
+      }
+      return line;
+    }).join('\n');
+
+    // Remove # comments ONLY in xychart data lines (not in other contexts)
+    // Pattern: line [...] # comment or bar [...] # comment
+    fixed = fixed.replace(/(line|bar)\s*(\[[^\]]+\])\s*#[^\n]*/gi, '$1 $2');
+
+    return fixed.trim();
+  };
+
+  useEffect(() => {
+    if (ref.current) {
+      try {
+        const sanitizedChart = sanitizeMermaid(chart);
+        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        mermaid.render('mermaid-' + Math.random().toString(36).substring(2, 11), sanitizedChart).then(({ svg }) => {
+          ref.current.innerHTML = svg;
+        }).catch((error) => {
+          console.error('Mermaid rendering error:', error);
+          ref.current.innerHTML = `<pre style="color: red;">Mermaid Error: ${error.message}</pre>`;
+        });
+      } catch (error) {
+        console.error('Mermaid initialization error:', error);
+        ref.current.innerHTML = `<pre style="color: red;">Mermaid Error: ${error.message}</pre>`;
+      }
+    }
+  }, [chart]);
+
+  return <div ref={ref} className="mermaid-diagram" />;
+}
 
 function HomePage() {
   const { t } = useTranslation();
@@ -24,9 +70,7 @@ function HomePage() {
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Artifact state
-  const [activeArtifacts, setActiveArtifacts] = useState(null);
-  const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+  // Library renders everything inline - no separate artifact panel needed
 
   const messagesEndRef = useRef(null);
 
@@ -72,7 +116,6 @@ function HomePage() {
         model: msg.model_used,
         sources: msg.source_files || [],
         feedback: msg.feedback,
-        artifacts: msg.artifacts || [],
         isLoadedFromHistory: true, // Mark as loaded from history
         // Note: chunks are not stored in message history
       }));
@@ -149,53 +192,19 @@ function HomePage() {
         // Update conversation ID from response
         setCurrentConversationId(response.conversation_id);
 
-        // CLIENT-SIDE ARTIFACT EXTRACTION
-        // Parse markdown response and extract artifacts (tables, code, diagrams)
-        // This is more reliable than LLM-enforced structured outputs
-        let cleanContent = response.answer;
-        let extractedArtifacts = response.artifacts || [];
-
-        try {
-          const { cleanText, artifacts } = extractArtifactsFromMarkdown(response.answer);
-          cleanContent = cleanText;
-
-          // Merge backend artifacts with client-extracted artifacts (avoid duplicates)
-          const backendArtifacts = response.artifacts || [];
-          const newArtifacts = artifacts.filter(extracted => {
-            // Check if this artifact already exists in backend artifacts
-            return !backendArtifacts.some(existing =>
-              existing.type === extracted.type &&
-              existing.content === extracted.content
-            );
-          });
-
-          extractedArtifacts = [...backendArtifacts, ...newArtifacts];
-
-          console.log(`Client-side parsing: ${artifacts.length} artifacts extracted, ${extractedArtifacts.length} total artifacts`);
-        } catch (error) {
-          console.error('Client-side artifact extraction failed:', error);
-          // Fallback to backend artifacts
-          extractedArtifacts = response.artifacts || [];
-        }
-
+        // Library-based rendering: Keep full markdown content
+        // @uiw/react-markdown-preview handles tables, code, mermaid automatically
         const assistantMessage = {
           id: response.message_id,
           type: 'assistant',
-          content: cleanContent, // Clean text without artifacts
+          content: response.answer, // Full markdown - library will render everything
           sources: response.sources,
           chunks: response.relevant_chunks,
           model: response.model_used,
           timestamp: new Date(),
-          artifacts: extractedArtifacts,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
-
-        // Auto-open artifact panel if artifacts are present
-        if (extractedArtifacts && extractedArtifacts.length > 0) {
-          setActiveArtifacts(extractedArtifacts);
-          setArtifactPanelOpen(true);
-        }
 
         // Reload conversations list if this was a new conversation
         if (!currentConversationId) {
@@ -372,15 +381,14 @@ function HomePage() {
         </div>
       </div>
 
-      {/* Main Content Area with Split View */}
+      {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minWidth: 0 }}>
         {/* Chat Area */}
         <div style={{
-          flex: artifactPanelOpen ? '1 1 50%' : '1 1 100%',
+          flex: '1 1 100%',
           display: 'flex',
           flexDirection: 'column',
           minWidth: 0,
-          transition: 'flex 0.3s ease',
         }}>
           {/* Header */}
           <div
@@ -436,10 +444,6 @@ function HomePage() {
             <ChatMessage
               key={index}
               message={message}
-              onViewArtifacts={(artifacts) => {
-                setActiveArtifacts(artifacts);
-                setArtifactPanelOpen(true);
-              }}
             />
           ))}
 
@@ -486,28 +490,12 @@ function HomePage() {
           </div>
         </div>
 
-        {/* Artifact Panel */}
-        {artifactPanelOpen && activeArtifacts && (
-          <div style={{
-            flex: '1 1 50%',
-            borderLeft: '1px solid #e2e8f0',
-            backgroundColor: '#ffffff',
-            display: 'flex',
-            flexDirection: 'column',
-            minWidth: 0,
-          }}>
-            <ArtifactViewer
-              artifacts={activeArtifacts}
-              onClose={() => setArtifactPanelOpen(false)}
-            />
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-function ChatMessage({ message, onViewArtifacts }) {
+function ChatMessage({ message }) {
   const { t } = useTranslation();
   const [feedback, setFeedback] = useState(message.feedback || null);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
@@ -515,7 +503,6 @@ function ChatMessage({ message, onViewArtifacts }) {
   const [comment, setComment] = useState('');
   const [pendingFeedback, setPendingFeedback] = useState(null);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
-  const hasArtifacts = message.artifacts && message.artifacts.length > 0;
 
   // Format file name helper function
   const formatFileName = (filename) => {
@@ -566,7 +553,37 @@ function ChatMessage({ message, onViewArtifacts }) {
   return (
     <div className={`chat-message ${message.type}`} style={{ marginBottom: '1rem' }}>
       <div className="chat-message-content">
-        <ReactMarkdown>{message.content}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          components={{
+            code({ node, inline, className, children, ...props }) {
+              const match = /language-(\w+)/.exec(className || '');
+              const language = match ? match[1] : '';
+              const code = String(children).replace(/\n$/, '');
+
+              // Render mermaid diagrams with custom component
+              if (language === 'mermaid') {
+                return <MermaidDiagram chart={code} />;
+              }
+
+              // Regular code blocks
+              return !inline ? (
+                <pre className={className} style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px', overflow: 'auto' }}>
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                </pre>
+              ) : (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              );
+            }
+          }}
+        >
+          {message.content}
+        </ReactMarkdown>
       </div>
 
       {message.sources && message.sources.length > 0 && (
@@ -574,25 +591,25 @@ function ChatMessage({ message, onViewArtifacts }) {
           <div
             className="chat-sources-title"
             style={{
-              cursor: message.sources.length > 1 ? 'pointer' : 'default',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
             }}
-            onClick={() => message.sources.length > 1 && setSourcesExpanded(!sourcesExpanded)}
+            onClick={() => setSourcesExpanded(!sourcesExpanded)}
           >
             <div>
               <FileText size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
               {t('home.sources')} ({message.sources.length})
             </div>
-            {message.sources.length > 1 && (
-              sourcesExpanded ?
-                <ChevronUp size={16} style={{ color: '#718096' }} /> :
-                <ChevronDown size={16} style={{ color: '#718096' }} />
-            )}
+            {sourcesExpanded ?
+              <ChevronUp size={16} style={{ color: '#718096' }} /> :
+              <ChevronDown size={16} style={{ color: '#718096' }} />
+            }
           </div>
-          <div className="chat-sources-list">
-            {(sourcesExpanded ? message.sources : message.sources.slice(0, 1)).map((source, idx) => {
+          {sourcesExpanded && (
+            <div className="chat-sources-list">
+              {message.sources.map((source, idx) => {
               const formatted = formatFileName(source);
               return (
                 <button
@@ -631,7 +648,8 @@ function ChatMessage({ message, onViewArtifacts }) {
                 </button>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -641,23 +659,6 @@ function ChatMessage({ message, onViewArtifacts }) {
             <div style={{ fontSize: '0.75rem', color: '#a0aec0' }}>
               {t('home.model')}: {message.model}
             </div>
-          )}
-          {hasArtifacts && onViewArtifacts && (
-            <button
-              onClick={() => onViewArtifacts(message.artifacts)}
-              className="btn btn-secondary"
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
-              title="View artifacts"
-            >
-              <Eye size={14} />
-              View {message.artifacts.length} {message.artifacts.length === 1 ? 'Artifact' : 'Artifacts'}
-            </button>
           )}
         </div>
 
