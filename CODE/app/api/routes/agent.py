@@ -214,6 +214,7 @@ def _map_agent_response(
         message="Agent query completed successfully" if agent_response.is_complete else "Awaiting confirmation",
         query=original_query,
         answer=agent_response.answer,
+        context="",  # Agent may not use RAG context
         context_used="",  # Agent may not use RAG context
         n_chunks_found=agent_response.n_chunks_found,
         sources=agent_response.sources,

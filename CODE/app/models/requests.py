@@ -15,6 +15,9 @@ class RAGRequest(BaseModel):
     prompt: str = Field(..., description="The query to search for in documents")
     n_results: Optional[int] = Field(5, description="Number of relevant chunks to retrieve", ge=1, le=20)
     use_llm: Optional[bool] = Field(True, description="Whether to use LLM for response generation")
+    model: Optional[str] = Field(None, description="Specific LLM model to use (optional)")
+    language: Optional[str] = Field(None, description="Response language preference")
+    instructions: Optional[str] = Field(None, description="Additional instructions for the LLM")
 
 
 class RAGLLMRequest(BaseModel):

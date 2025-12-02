@@ -93,13 +93,14 @@ class RAGLLMResponse(BaseResponse):
     """RAG query with LLM completion response."""
     query: str = Field(..., description="Original query")
     answer: str = Field(..., description="LLM generated answer based on context")
+    context: str = Field(..., description="Retrieved context from documents")  # Added for compatibility
     context_used: str = Field(..., description="Context from documents that was used")
     n_chunks_found: int = Field(..., description="Number of relevant chunks found")
     sources: List[str] = Field(..., description="Source files that contributed to the answer")
     relevant_chunks: List[RelevantChunk] = Field(..., description="List of relevant document chunks")
     model_used: Optional[str] = Field(None, description="LLM model used for generation")
-    conversation_id: str = Field(..., description="Conversation ID for this exchange")
-    message_id: str = Field(..., description="Message ID for this assistant response")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID for this exchange")
+    message_id: Optional[str] = Field(None, description="Message ID for this assistant response")
     artifacts: List[ArtifactData] = Field(default_factory=list, description="Generated artifacts for display")
     # Adaptive RAG routing metadata
     routing_strategy: Optional[str] = Field(None, description="Routing strategy used: no_retrieval, single_retrieval, or multi_retrieval")

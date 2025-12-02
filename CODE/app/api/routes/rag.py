@@ -79,6 +79,7 @@ async def rag_search(
                     message="RAG search with LLM completion successful",
                     query=request.prompt,
                     answer=llm_response["response"],
+                    context=search_results["context"],  # For compatibility with RAGResponse
                     context_used=search_results["context"],
                     n_chunks_found=search_results["n_chunks_found"],
                     sources=list(set([chunk.metadata.get('file_name', 'Unknown')

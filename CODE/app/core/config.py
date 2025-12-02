@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     agent_api_timeout: int = Field(default=30, description="External agent API timeout in seconds")
     agent_fallback_to_local: bool = Field(default=True, description="Fallback to local provider if API fails")
 
+    # Internal Service Authentication
+    internal_service_key: Optional[str] = Field(
+        default="dev-internal-service-key-change-in-production",
+        description="Shared secret for service-to-service authentication (agent-api to main API)"
+    )
+
     # CORS Configuration (accepts JSON array or comma-separated string)
     cors_origins: Union[str, List[str]] = Field(
         default=["http://localhost:3000", "http://localhost:8000"]

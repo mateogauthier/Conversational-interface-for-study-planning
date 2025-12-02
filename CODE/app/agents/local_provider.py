@@ -14,7 +14,7 @@ from app.agents.base import (
     Tool,
     ToolSafety
 )
-from app.tools.executor import ToolExecutor
+from app.tools.http_executor import HTTPToolExecutor
 from app.tools.registry import get_user_tools, get_tool_descriptions_for_llm, get_tool
 from app.db.models import UserInDB
 
@@ -60,12 +60,9 @@ class LocalAgentProvider(AgentProvider):
         self.max_iterations = max_iterations
         self.auto_approve_reads = auto_approve_reads
 
-        # Initialize tool executor
-        self.tool_executor = ToolExecutor(
-            file_service=file_service,
-            rag_service=rag_service,
-            conversation_service=conversation_service,
-            user_service=user_service,
+        # Initialize HTTP tool executor (calls Agent API)
+        self.tool_executor = HTTPToolExecutor(
+            agent_api_url="http://agent-api:8002"
         )
 
         # Store pending confirmations in memory
@@ -145,8 +142,8 @@ class LocalAgentProvider(AgentProvider):
             content=f"Planning: {tool_plan}"
         ))
 
-        # Parse tool calls from plan
-        tool_calls = await self._extract_tool_calls(tool_plan, user)
+        # Parse tool calls from plan (pass original query and kwargs for user preferences)
+        tool_calls = await self._extract_tool_calls(tool_plan, user, original_query=query, **kwargs)
 
         # Execute tools
         for tool_call_plan in tool_calls:
@@ -384,12 +381,20 @@ PLAN: Answer directly"""
     async def _extract_tool_calls(
         self,
         plan: str,
-        user: UserInDB
+        user: UserInDB,
+        original_query: str = None,
+        **kwargs
     ) -> List[Dict[str, Any]]:
         """Extract tool calls from plan.
 
         Simple implementation: looks for tool names in plan text.
         In production, use Instructor for structured output.
+
+        Args:
+            plan: LLM-generated plan text
+            user: User making the request
+            original_query: Original user query (preserves language and intent)
+            **kwargs: Additional parameters including n_results from user preferences
         """
         tool_calls = []
         available_tools = get_user_tools(user)
@@ -400,15 +405,116 @@ PLAN: Answer directly"""
                 # Extract parameters (simplified)
                 parameters = {}
 
-                if tool.name == "search_documents" and "search" in plan.lower():
-                    # Try to extract search query
-                    parameters["query"] = plan.split("search", 1)[1].split("\n")[0].strip()
-                    parameters["n_results"] = 5
+                if tool.name == "search_documents":
+                    # If we have the original query, use it directly to preserve language
+                    if original_query:
+                        parameters["query"] = original_query
+                    else:
+                        # Fallback: Extract search query from plan
+                        # Look for quoted text or keywords after common phrases
+                        import re
+                        # Try to find quoted text first
+                        quoted = re.search(r'["\']([^"\']+)["\']', plan)
+                        if quoted:
+                            parameters["query"] = quoted.group(1)
+                        elif "search for" in plan.lower():
+                            parameters["query"] = plan.lower().split("search for", 1)[1].split("\n")[0].strip().strip('"\'')
+                        elif "search documents about" in plan.lower():
+                            parameters["query"] = plan.lower().split("search documents about", 1)[1].split("\n")[0].strip().strip('"\'')
+                        else:
+                            # Fallback: extract main keywords from query
+                            # Remove tool names and common words
+                            clean_plan = plan.lower()
+                            for word in ["search_documents", "search", "documents", "find", "look for"]:
+                                clean_plan = clean_plan.replace(word, "")
+                            parameters["query"] = clean_plan.strip().split("\n")[0][:100]
+                    # Use user's preferred chunk count, default to 5
+                    parameters["n_results"] = kwargs.get("n_results", 5)
 
-                tool_calls.append({
-                    "name": tool.name,
-                    "parameters": parameters
-                })
+                elif tool.name == "web_search":
+                    # Extract web search query - similar to search_documents
+                    # Use original query to preserve language
+                    if original_query:
+                        parameters["query"] = original_query
+                    else:
+                        # Fallback: Extract search query from plan
+                        import re
+                        # Try to find quoted text first
+                        quoted = re.search(r'["\']([^"\']+)["\']', plan)
+                        if quoted:
+                            parameters["query"] = quoted.group(1)
+                        elif "search for" in plan.lower():
+                            parameters["query"] = plan.lower().split("search for", 1)[1].split("\n")[0].strip().strip('"\'')
+                        elif "web_search" in plan.lower() and "query=" in plan.lower():
+                            # Extract from function call format: web_search(query="...")
+                            query_match = re.search(r'query=["\'"]([^"\']+)["\']', plan)
+                            if query_match:
+                                parameters["query"] = query_match.group(1)
+                        else:
+                            # Fallback: Use cleaned plan
+                            clean_plan = plan.lower()
+                            for word in ["web_search", "search", "web", "find", "look for"]:
+                                clean_plan = clean_plan.replace(word, "")
+                            parameters["query"] = clean_plan.strip().split("\n")[0][:100]
+                    # Default max_results to 5
+                    parameters["max_results"] = kwargs.get("max_results", 5)
+
+                elif tool.name == "get_file_info":
+                    # Extract filename parameter
+                    import re
+                    # Try to find quoted filename
+                    filename_match = re.search(r'filename=["\'"]([^"\']+)["\']', plan)
+                    if filename_match:
+                        parameters["filename"] = filename_match.group(1)
+                    else:
+                        # Try to find any quoted text that might be the filename
+                        quoted = re.search(r'["\']([^"\']+\.(?:pdf|docx|txt|xlsx|md))["\']', plan, re.IGNORECASE)
+                        if quoted:
+                            parameters["filename"] = quoted.group(1)
+
+                elif tool.name == "list_conversations":
+                    # Extract limit parameter if present
+                    import re
+                    limit_match = re.search(r'limit=(\d+)', plan)
+                    if limit_match:
+                        parameters["limit"] = int(limit_match.group(1))
+                    else:
+                        parameters["limit"] = kwargs.get("limit", 10)
+
+                elif tool.name == "delete_file":
+                    # Extract filename parameter
+                    import re
+                    filename_match = re.search(r'filename=["\'"]([^"\']+)["\']', plan)
+                    if filename_match:
+                        parameters["filename"] = filename_match.group(1)
+                    else:
+                        # Try to find any quoted text that might be the filename
+                        quoted = re.search(r'["\']([^"\']+\.(?:pdf|docx|txt|xlsx|md))["\']', plan, re.IGNORECASE)
+                        if quoted:
+                            parameters["filename"] = quoted.group(1)
+
+                # Only add tool call if we have required parameters
+                if tool.name == "search_documents" and "query" in parameters:
+                    tool_calls.append({
+                        "name": tool.name,
+                        "parameters": parameters
+                    })
+                elif tool.name == "web_search" and "query" in parameters:
+                    tool_calls.append({
+                        "name": tool.name,
+                        "parameters": parameters
+                    })
+                elif tool.name in ["list_files", "get_user_stats", "list_conversations"]:
+                    # These tools don't require query parameter
+                    tool_calls.append({
+                        "name": tool.name,
+                        "parameters": parameters
+                    })
+                elif tool.name in ["get_file_info", "delete_file"] and "filename" in parameters:
+                    tool_calls.append({
+                        "name": tool.name,
+                        "parameters": parameters
+                    })
 
         return tool_calls
 
@@ -474,21 +580,63 @@ PLAN: Answer directly"""
         """Generate final answer using LLM with tool results."""
         # Build context from tool results
         context_parts = []
+        has_web_search = False
+        web_search_empty = False
+        has_doc_search = False
+        doc_search_empty = False
+
         for step in agent_steps:
             if step.step_type == "result" and step.tool_call and step.tool_call.result:
-                context_parts.append(f"Tool: {step.tool_call.tool_name}")
-                context_parts.append(f"Result: {step.tool_call.result}")
+                tool_name = step.tool_call.tool_name
+                result = step.tool_call.result
+
+                context_parts.append(f"Tool: {tool_name}")
+                context_parts.append(f"Result: {result}")
+
+                # Check if web search returned empty results
+                if tool_name == "web_search":
+                    has_web_search = True
+                    result_count = result.get("result_count", 0) if isinstance(result, dict) else 0
+                    if result_count == 0:
+                        web_search_empty = True
+
+                # Check if document search returned empty results
+                if tool_name == "search_documents":
+                    has_doc_search = True
+                    n_chunks = result.get("n_chunks_found", 0) if isinstance(result, dict) else 0
+                    if n_chunks == 0:
+                        doc_search_empty = True
 
         context = "\n\n".join(context_parts)
+
+        # Add explicit anti-hallucination instructions when searches return empty or insufficient data
+        additional_instructions = ""
+        if has_web_search and web_search_empty:
+            additional_instructions += "\n\n**CRITICAL**: The web search returned ZERO results. You do NOT have any information to answer this question. You MUST tell the user that you could not find the information online. DO NOT make up addresses, locations, phone numbers, or any other specific details. Be honest that the search was unsuccessful."
+
+        if has_doc_search and doc_search_empty:
+            additional_instructions += "\n\n**CRITICAL**: The document search returned ZERO relevant chunks. You do NOT have any information in the documents to answer this question. DO NOT make up information. Tell the user that you could not find relevant information in the uploaded documents."
+
+        if not context_parts:
+            additional_instructions += "\n\n**CRITICAL**: No tool results were obtained. You do NOT have information to answer this question. DO NOT make up specific details like addresses, names, or facts."
+
+        # Always add general anti-hallucination instruction for document-based queries
+        if has_doc_search:
+            additional_instructions += "\n\n**CRITICAL INSTRUCTION**: You MUST base your answer ONLY on the exact text content provided in the document chunks above. DO NOT invent, extrapolate, or assume information that is not explicitly stated in the chunks. If the chunks do not contain complete information to answer the question (e.g., user asks for all grades but chunks only show 2 courses), you MUST tell the user that you only found partial information and list ONLY what you actually found. NEVER create fictional data, grades, names, or any other details. If you're unsure or the information is incomplete, say so explicitly."
+
+        # Combine with user's custom instructions if any
+        final_instructions = kwargs.get("instructions", "")
+        if additional_instructions:
+            final_instructions = (final_instructions + additional_instructions) if final_instructions else additional_instructions.strip()
 
         # Generate answer
         response = await self.llm_service.generate_with_context(
             prompt=query,
-            context=context,
+            context=context if context else "No information available from tools.",
             conversation_history=conversation_history,
             model=kwargs.get("model"),
             language=kwargs.get("language"),
-            instructions=kwargs.get("instructions")
+            instructions=final_instructions
         )
 
         return response["response"]

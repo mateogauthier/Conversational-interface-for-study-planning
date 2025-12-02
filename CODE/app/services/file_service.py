@@ -256,7 +256,30 @@ class FileService:
         except Exception as e:
             logger.error(f"Error listing files: {str(e)}")
             raise FileProcessingException(f"Error listing files: {str(e)}")
-    
+
+    async def list_all_files(self) -> List[Dict[str, Any]]:
+        """
+        List ALL files in database (admin utility for reindexing).
+
+        Returns:
+            List of file metadata dictionaries
+        """
+        try:
+            if self.files_collection is None:
+                return []
+
+            cursor = self.files_collection.find({}).sort("uploaded_at", -1)
+            files = []
+
+            async for file_doc in cursor:
+                files.append(file_doc)
+
+            return files
+
+        except Exception as e:
+            logger.error(f"Error listing all files: {str(e)}")
+            raise FileProcessingException(f"Error listing all files: {str(e)}")
+
     async def get_file_info(self, filename: str) -> FileInfo:
         """Get detailed information about a specific file from GridFS."""
         try:

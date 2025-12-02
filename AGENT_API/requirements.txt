@@ -1,0 +1,15 @@
+# Agent API Dependencies
+# Independent microservice - communicates with main API via HTTP
+
+# FastAPI and server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-multipart==0.0.20
+
+# HTTP client for calling main API services
+httpx==0.28.1
+
+# Web search capabilities (independent tool)
+duckduckgo-search==6.3.5

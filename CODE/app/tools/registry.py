@@ -167,6 +167,53 @@ TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
         ),
         "executor": None
     },
+    "web_search": {
+        "definition": Tool(
+            name="web_search",
+            description="Search the web using DuckDuckGo to find current information not available in documents",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to find information on the web"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of search results to return (1-10)",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 10
+                    }
+                },
+                "required": ["query"]
+            },
+            safety=ToolSafety.SAFE,
+            required_role=None,
+            example_usage='web_search(query="latest AI developments 2025", max_results=5)'
+        ),
+        "executor": None
+    },
+    "read_file_content": {
+        "definition": Tool(
+            name="read_file_content",
+            description="Read the full text content of a specific file. Use this when you found relevant information in search results from a specific file but need more complete information from that file. This retrieves ALL text content from the file.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Name of the file to read (e.g., 'escolaridad mateo gauthier.pdf')"
+                    }
+                },
+                "required": ["filename"]
+            },
+            safety=ToolSafety.SAFE,
+            required_role=None,
+            example_usage='read_file_content(filename="escolaridad mateo gauthier.pdf")'
+        ),
+        "executor": None
+    },
 }
 
 

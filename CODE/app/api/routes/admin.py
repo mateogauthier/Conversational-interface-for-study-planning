@@ -5,9 +5,11 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional
 
-from app.api.dependencies import get_current_admin, get_user_service_dep, get_database
+from app.api.dependencies import get_current_admin, get_user_service_dep, get_database, get_file_service_dep, get_rag_service
 from app.services.user_service import UserService
 from app.services.feedback_service import FeedbackService
+from app.services.file_service import FileService
+from app.services.rag_service import RAGService
 from app.db.models import UserInDB
 from app.models.user import UserResponse, UserListResponse, UserStatisticsResponse
 from app.models.responses import (
@@ -292,3 +294,73 @@ async def get_feedback_by_file(
     except Exception as e:
         logger.error(f"Error getting feedback for file {filename}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting feedback: {str(e)}")
+
+
+@router.post("/reindex-all-files")
+async def reindex_all_files(
+    admin: UserInDB = Depends(get_current_admin),
+    file_service: FileService = Depends(get_file_service_dep),
+    rag_service: RAGService = Depends(get_rag_service)
+):
+    """Reprocess all files into ChromaDB (admin only).
+
+    This endpoint reprocesses all files from disk and re-indexes them into ChromaDB.
+    Useful when ChromaDB data is lost or corrupted.
+    """
+    try:
+        logger.info(f"Admin {admin.email} initiated full reindex")
+
+        if not rag_service:
+            raise HTTPException(status_code=500, detail="RAG service not available")
+
+        # Get all files from MongoDB
+        all_files = await file_service.list_all_files()
+
+        results = {
+            "total_files": len(all_files),
+            "processed": 0,
+            "failed": 0,
+            "errors": []
+        }
+
+        for file_meta in all_files:
+            filename = file_meta.get("filename")
+            try:
+                logger.info(f"Reprocessing file: {filename}")
+
+                # Process document from GridFS (current storage method)
+                owner_id = file_meta.get("user_id")
+
+                chunk_count = await rag_service.process_document_from_gridfs(
+                    filename=filename,
+                    user_id=str(owner_id) if owner_id else "system",
+                    is_public=file_meta.get("is_public", False)
+                )
+
+                # Update file metadata with processing status
+                await file_service.update_file_processed_status(
+                    filename=filename,
+                    processed=True,
+                    chunk_count=chunk_count
+                )
+
+                logger.info(f"✓ Reprocessed {filename}: {chunk_count} chunks")
+                results["processed"] += 1
+
+            except Exception as file_error:
+                error_msg = f"{filename}: {str(file_error)}"
+                logger.error(f"✗ Failed to reprocess {filename}: {file_error}")
+                results["failed"] += 1
+                results["errors"].append(error_msg)
+
+        logger.info(f"Reindex complete: {results['processed']} succeeded, {results['failed']} failed")
+
+        return {
+            "success": True,
+            "message": f"Reindex complete: {results['processed']}/{results['total_files']} files processed successfully",
+            "results": results
+        }
+
+    except Exception as e:
+        logger.error(f"Error during reindex: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Reindex failed: {str(e)}")
