@@ -394,23 +394,31 @@ class LangGraphAgentProvider(AgentProvider):
         """Extract all entries from file content that contain the specified year.
 
         This is deterministic Python code - no LLM involved, so it finds EVERYTHING.
+        Supports multiple date formats: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, YYYY/MM/DD
         """
         import re
 
         entries = []
         lines = content.split('\n')
 
-        # Look for lines with dates containing the year (DD/MM/YYYY format)
-        date_pattern = rf'\d{{2}}/\d{{2}}/{year}'
+        # Multiple date patterns to support various formats
+        date_patterns = [
+            rf'\d{{2}}/\d{{2}}/{year}',      # DD/MM/YYYY or MM/DD/YYYY
+            rf'\d{{2}}-\d{{2}}-{year}',      # DD-MM-YYYY or MM-DD-YYYY
+            rf'{year}/\d{{2}}/\d{{2}}',      # YYYY/MM/DD
+            rf'{year}-\d{{2}}-\d{{2}}',      # YYYY-MM-DD
+            rf'\b{year}\b'                    # Standalone year mention
+        ]
 
         for i, line in enumerate(lines):
-            if re.search(date_pattern, line):
-                # Found a line with a date from the requested year
-                # Extract the full entry (usually includes course name, code, date, grade)
-                entries.append({
-                    "line_number": i + 1,
-                    "content": line.strip()
-                })
+            # Check if any date pattern matches
+            for pattern in date_patterns:
+                if re.search(pattern, line):
+                    entries.append({
+                        "line_number": i + 1,
+                        "content": line.strip()
+                    })
+                    break  # Don't add the same line multiple times
 
         return entries
 
@@ -441,10 +449,12 @@ class LangGraphAgentProvider(AgentProvider):
 
                 # Check if this is a year-specific query - if so, extract entries deterministically
                 year_match = None
-                for year in ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017"]:
-                    if year in state["query"]:
-                        year_match = year
-                        break
+                import re
+                # Look for 4-digit years in the query (e.g., 2024, 2023, etc.)
+                year_pattern = r'\b(19\d{2}|20\d{2})\b'  # Matches years from 1900-2099
+                year_matches = re.findall(year_pattern, state["query"])
+                if year_matches:
+                    year_match = year_matches[0]  # Use the first year found
 
                 if year_match:
                     # Extract all entries with that year programmatically
@@ -463,9 +473,9 @@ class LangGraphAgentProvider(AgentProvider):
                     enhanced_query = f"""The user asked: {state["query"]}
 
 I have already searched the complete file and found {len(entries)} entries for year {year_match}.
-Your task is to format this information in a clear, user-friendly response in Spanish.
+Your task is to format this information in a clear, user-friendly response.
 
-Present all {len(entries)} entries in a numbered list with course name, code, date, and grade."""
+Present all {len(entries)} entries in a numbered list, preserving the information shown in each line."""
 
                 else:
                     # Not a year-specific query - send full content
@@ -532,34 +542,34 @@ You have access to the COMPLETE content of the file, not just search chunks.
 You MUST read through the ENTIRE file content line by line and extract ALL matching entries.
 
 **MANDATORY EXHAUSTIVE SEARCH**:
-When the user asks for information from a specific year (e.g., 2024):
+When the user asks for information from a specific time period (e.g., year, month, date range):
 1. Scan through EVERY LINE of the file content provided
-2. Find EVERY occurrence of dates containing that year (e.g., 'DD/MM/2024' or just '2024')
-3. Extract the COMPLETE information for EACH matching entry (course name, code, date, grade)
+2. Find EVERY occurrence matching the user's criteria
+3. Extract the COMPLETE information for EACH matching entry
 4. Count how many entries you found and list ALL of them
 5. DO NOT stop after finding just a few - continue searching until you've read the entire content
 
-**DATE FORMAT**:
-- Dates are in DD/MM/YYYY format (e.g., '19/12/2024' means December 19th, 2024)
-- The year is the last 4 digits in the date
-- Search for BOTH the full date pattern AND standalone year mentions
+**DATE FORMAT DETECTION**:
+- Automatically detect the date format used in the file (e.g., DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD)
+- Extract dates accurately based on the detected format
+- Search for BOTH full date patterns AND standalone time period mentions
 
 **VERIFICATION**:
 After extracting all entries, verify:
 - Did you read the entire file content?
-- Did you check every line for the requested year?
+- Did you check every line for the requested criteria?
 - Are you confident you found ALL occurrences?
 
 **ANTI-HALLUCINATION**:
 Only report information explicitly present in the file content. If after thoroughly
-searching the ENTIRE content you find no entries for the requested year, tell the user
-honestly that no entries were found for that specific year.
+searching the ENTIRE content you find no entries matching the user's criteria, tell the user
+honestly that no entries were found.
 
-**EXAMPLE FORMAT** (for grade queries):
-"Encontré X materias del año 2024:
-1. [Course name] ([code]) - [date] - [grade]%
-2. [Course name] ([code]) - [date] - [grade]%
-..."
+**RESPONSE FORMAT**:
+Present results in a clear, numbered list format that:
+- Shows the count of entries found
+- Lists each entry with all its information
+- Maintains the original information structure from the file
 """
         elif state.get("search_results"):
             # Only have search chunks
