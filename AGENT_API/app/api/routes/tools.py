@@ -167,8 +167,14 @@ async def web_search(request: WebSearchRequest):
         )
 
     except Exception as e:
-        logger.error(f"Web search error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        # Return 503 for rate limiting, 500 for other errors
+        if "rate limiting" in error_msg.lower() or "ratelimit" in error_msg.lower():
+            logger.warning(f"Web search rate limited: {e}")
+            raise HTTPException(status_code=503, detail=error_msg)
+        else:
+            logger.error(f"Web search error: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=error_msg)
 
 
 @router.post("/read_file_content", response_model=ReadFileContentResponse)

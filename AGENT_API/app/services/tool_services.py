@@ -471,12 +471,8 @@ class AgentToolService:
 
                 if "Ratelimit" in error_msg or "429" in error_msg or "202" in error_msg:
                     logger.warning(f"DuckDuckGo rate limit hit for query: {query}")
-                    return {
-                        "query": query,
-                        "results": [],
-                        "result_count": 0,
-                        "error": "Search service temporarily unavailable due to rate limiting. Please try again later."
-                    }
+                    # Raise exception so the API returns HTTP 503 and caller can detect the error
+                    raise Exception("Search service temporarily unavailable due to rate limiting. Please try again later.")
                 else:
                     logger.error(f"DuckDuckGo search error: {ddg_error}", exc_info=True)
                     raise

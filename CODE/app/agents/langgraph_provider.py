@@ -15,6 +15,7 @@ from langgraph.prebuilt import ToolNode
 
 from app.agents.base import AgentProvider, AgentResponse, AgentStep, ToolCall, Tool
 from app.db.models import UserInDB
+from app.tools.http_executor import HTTPToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,11 @@ class AgentState(TypedDict):
     query: str
     user: UserInDB
     conversation_id: Optional[str]
+    language: Optional[str]  # Language preference for LLM responses
 
     # Tool execution results
     search_results: Optional[Dict[str, Any]]
+    web_search_results: Optional[Dict[str, Any]]
     file_content: Optional[Dict[str, Any]]
     file_metadata: Optional[Dict[str, Any]]
 
@@ -85,40 +88,47 @@ class LangGraphAgentProvider(AgentProvider):
         self.max_iterations = max_iterations
         self.auto_approve_reads = auto_approve_reads  # Store but not used (no confirmations in LangGraph)
 
+        # Initialize HTTP tool executor for calling Agent API
+        self.tool_executor = HTTPToolExecutor()
+
         # Build the workflow graph
         self.app = self._build_graph()
 
-        logger.info("LangGraph agent provider initialized with deterministic routing")
+        logger.info("LangGraph agent provider initialized with deterministic routing and web search")
 
     def _build_graph(self) -> StateGraph:
         """Build the agent workflow graph.
 
         Graph structure:
-        START -> search_documents -> should_read_file?
-                                   ├─> YES -> read_file_content -> generate_answer -> END
-                                   └─> NO -> generate_answer -> END
+        START -> search_documents -> route_after_search?
+                                   ├─> web_search -> generate_answer -> END
+                                   ├─> read_file -> generate_answer -> END
+                                   └─> generate -> generate_answer -> END
         """
         workflow = StateGraph(AgentState)
 
         # Add nodes
         workflow.add_node("search_documents", self._search_documents_node)
+        workflow.add_node("web_search", self._web_search_node)
         workflow.add_node("read_file_content", self._read_file_content_node)
         workflow.add_node("generate_answer", self._generate_answer_node)
 
         # Set entry point
         workflow.set_entry_point("search_documents")
 
-        # Add conditional routing
+        # Add conditional routing after document search
         workflow.add_conditional_edges(
             "search_documents",
-            self._should_read_file,
+            self._route_after_search,
             {
+                "web_search": "web_search",
                 "read_file": "read_file_content",
                 "generate": "generate_answer"
             }
         )
 
-        # Connect read_file to generate_answer
+        # Connect web_search and read_file to generate_answer
+        workflow.add_edge("web_search", "generate_answer")
         workflow.add_edge("read_file_content", "generate_answer")
 
         # Connect generate_answer to END
@@ -160,12 +170,17 @@ class LangGraphAgentProvider(AgentProvider):
                 conversation_id=conversation_id
             )
 
+            # Extract language preference from kwargs
+            language = kwargs.get("language", "auto")  # Default to "auto" for Spanish detection
+
             # Initialize state
             initial_state: AgentState = {
                 "query": query,
                 "user": user,
                 "conversation_id": conversation_id,
+                "language": language,
                 "search_results": None,
+                "web_search_results": None,
                 "file_content": None,
                 "file_metadata": None,
                 "agent_steps": [],
@@ -271,6 +286,59 @@ class LangGraphAgentProvider(AgentProvider):
                 "agent_steps": [thinking_step, error_step],
                 "error": str(e)
             }
+
+    def _route_after_search(self, state: AgentState) -> str:
+        """Determine next step after initial search: web_search, read_file, or generate.
+
+        Intelligent routing based on query type and search results.
+
+        Decision logic:
+        1. Check if query explicitly needs web search (weather, news, current events, etc.)
+        2. If document search found results -> decide if we need complete file
+        3. If NO documents found -> fallback to web search to try answering
+        4. Otherwise -> generate with what we have
+        """
+        query_lower = state["query"].lower()
+
+        # Keywords that explicitly indicate web search is needed
+        web_keywords = [
+            # Current/realtime information
+            "today", "now", "current", "latest", "recent", "breaking",
+            # Weather
+            "weather", "temperature", "forecast", "clima", "temperatura",
+            # News
+            "news", "noticias", "headlines",
+            # Time-sensitive
+            "happening", "trending", "this week", "this month",
+            # External lookups
+            "wikipedia", "definition", "what is", "who is", "when did",
+            # Live data
+            "stock", "price", "exchange rate", "cryptocurrency",
+            # Location information
+            "donde", "where", "ubicada", "ubicado", "located", "address", "dirección",
+            "location", "ubicación", "lugar", "place", "how to get", "como llegar"
+        ]
+
+        # Check if query explicitly needs web search
+        needs_web_search = any(keyword in query_lower for keyword in web_keywords)
+
+        if needs_web_search:
+            logger.info(f"Query requires web search: matched keywords")
+            return "web_search"
+
+        # Check document search results
+        search_results = state.get("search_results")
+        if search_results and search_results.get("n_chunks_found", 0) > 0:
+            # Found documents - decide if we need complete file
+            chunks = search_results.get("relevant_chunks", [])
+            if chunks:
+                logger.info(f"Found {len(chunks)} document chunks - will read complete file")
+                return "read_file"
+
+        # NO documents found - fallback to web search
+        # This allows the agent to try finding information on the web when documents don't have it
+        logger.info(f"No relevant documents found - falling back to web search")
+        return "web_search"
 
     def _should_read_file(self, state: AgentState) -> str:
         """Determine if we should read the complete file.
@@ -390,6 +458,87 @@ class LangGraphAgentProvider(AgentProvider):
                 "error": str(e)
             }
 
+    async def _web_search_node(self, state: AgentState) -> Dict[str, Any]:
+        """Execute web search using DuckDuckGo via Agent API.
+
+        This node is called when the query requires real-time web information.
+        """
+        step_num = len(state["agent_steps"]) + 1
+
+        thinking_step = AgentStep(
+            step_number=step_num,
+            step_type="thought",
+            content="Searching the web for current information"
+        )
+
+        try:
+            # Execute web search via Agent API
+            tool_call_result = await self.tool_executor.execute(
+                tool_name="web_search",
+                parameters={
+                    "query": state["query"],
+                    "max_results": 5
+                },
+                user=state["user"]
+            )
+
+            # Add tool execution step
+            tool_step = AgentStep(
+                step_number=step_num + 1,
+                step_type="tool_call",
+                content="Executing web_search",
+                tool_call=tool_call_result
+            )
+
+            # Extract results
+            if tool_call_result.error:
+                # Web search failed
+                logger.warning(f"Web search failed: {tool_call_result.error}")
+                result_step = AgentStep(
+                    step_number=step_num + 2,
+                    step_type="result",
+                    content=f"Web search failed: {tool_call_result.error}",
+                    tool_call=tool_call_result
+                )
+
+                return {
+                    "web_search_results": {"results": [], "result_count": 0, "error": tool_call_result.error},
+                    "agent_steps": [thinking_step, tool_step, result_step],
+                    "tools_executed": ["web_search"]
+                }
+
+            # Web search succeeded
+            web_results = tool_call_result.result
+            result_count = web_results.get("result_count", 0)
+
+            logger.info(f"Web search found {result_count} results")
+
+            result_step = AgentStep(
+                step_number=step_num + 2,
+                step_type="result",
+                content=f"Web search completed: {result_count} results found",
+                tool_call=tool_call_result
+            )
+
+            return {
+                "web_search_results": web_results,
+                "agent_steps": [thinking_step, tool_step, result_step],
+                "tools_executed": ["web_search"]
+            }
+
+        except Exception as e:
+            logger.error(f"Error in web_search_node: {e}")
+            error_step = AgentStep(
+                step_number=step_num,
+                step_type="error",
+                content=f"Web search failed: {str(e)}"
+            )
+            return {
+                "agent_steps": [thinking_step, error_step],
+                "error": str(e),
+                "web_search_results": {"results": [], "result_count": 0, "error": str(e)}
+            }
+
     def _extract_entries_by_year(self, content: str, year: str) -> List[Dict[str, str]]:
         """Extract all entries from file content that contain the specified year.
 
@@ -437,11 +586,31 @@ class LangGraphAgentProvider(AgentProvider):
 
         try:
             # Build context from tool results
-            # Priority: file_content > search_results (to save context space)
+            # Priority: file_content > web_search_results > search_results
             context_parts = []
             enhanced_query = state["query"]
 
-            if state.get("file_content"):
+            # Check for web search results first (most specific/timely)
+            if state.get("web_search_results") and state["web_search_results"].get("result_count", 0) > 0:
+                web_results = state["web_search_results"]
+                context_parts.append("Web Search Results:")
+                for idx, result in enumerate(web_results.get("results", [])[:5], 1):
+                    title = result.get("title", "No title")
+                    snippet = result.get("snippet", "No description")
+                    url = result.get("url", "")
+                    context_parts.append(f"\n{idx}. {title}")
+                    context_parts.append(f"   {snippet}")
+                    if url:
+                        context_parts.append(f"   Source: {url}")
+
+                enhanced_query = f"""The user asked: {state["query"]}
+
+I have searched the web and found {web_results.get("result_count", 0)} results.
+Your task is to synthesize this information into a clear, helpful response.
+
+If the search returned 0 results or encountered errors, explain that web search is temporarily unavailable but offer to help with other questions."""
+
+            elif state.get("file_content"):
                 # We have complete file content
                 file_content = state["file_content"]
                 filename = file_content.get("filename", "unknown")
@@ -498,7 +667,8 @@ Present all {len(entries)} entries in a numbered list, preserving the informatio
                 prompt=enhanced_query,
                 context=context,
                 conversation_history=[],
-                instructions=instructions
+                instructions=instructions,
+                language=state.get("language", "auto")
             )
 
             answer = response["response"]
@@ -619,6 +789,11 @@ could not find the requested information.
                 name="search_documents",
                 description="Search through uploaded documents using RAG to find relevant information",
                 parameters={"query": "Search query text"}
+            ),
+            Tool(
+                name="web_search",
+                description="Search the web using DuckDuckGo for current information not available in documents",
+                parameters={"query": "Search query", "max_results": "Number of results (default: 5)"}
             ),
             Tool(
                 name="read_file_content",
