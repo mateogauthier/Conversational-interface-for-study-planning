@@ -138,6 +138,7 @@ class LocalAgentProvider(AgentProvider):
         iteration = 0
         max_iterations = self.max_iterations
         should_continue = True
+        executed_tool_signatures = set()  # Track executed tool+params to prevent loops
 
         while should_continue and iteration < max_iterations:
             iteration += 1
@@ -167,6 +168,25 @@ class LocalAgentProvider(AgentProvider):
             for tool_call_plan in tool_calls:
                 tool_name = tool_call_plan["name"]
                 parameters = tool_call_plan["parameters"]
+
+                # Create signature for loop detection
+                import json
+                param_signature = json.dumps(parameters, sort_keys=True)
+                tool_signature = f"{tool_name}:{param_signature}"
+
+                # Check if we've already executed this exact tool call
+                if tool_signature in executed_tool_signatures:
+                    step_counter += 1
+                    agent_steps.append(AgentStep(
+                        step_number=step_counter,
+                        step_type="thought",
+                        content=f"Skipping {tool_name} - already executed with same parameters. Breaking loop."
+                    ))
+                    logger.warning(f"Loop detected: {tool_name} with params {parameters} already executed")
+                    continue
+
+                # Mark this tool call as executed
+                executed_tool_signatures.add(tool_signature)
 
                 # Check if tool requires confirmation
                 tool_def = get_tool(tool_name)
@@ -682,14 +702,24 @@ PLAN: Answer directly"""
                 # Create concise summary of result
                 if tool_name == "search_documents":
                     n_chunks = result.get("n_chunks_found", 0) if isinstance(result, dict) else 0
-                    tool_results_summary.append(f"- search_documents: Found {n_chunks} document chunks")
+                    # Extract source filenames from chunks
+                    sources = set()
+                    if isinstance(result, dict) and "chunks" in result:
+                        for chunk in result.get("chunks", []):
+                            if "source" in chunk:
+                                sources.add(chunk["source"])
+                    sources_str = f" from files: {', '.join(sources)}" if sources else ""
+                    tool_results_summary.append(f"- search_documents: Found {n_chunks} document chunks{sources_str}")
                 elif tool_name == "list_files":
                     files = result.get("files", []) if isinstance(result, dict) else []
                     tool_results_summary.append(f"- list_files: Found {len(files)} files")
                 elif tool_name == "read_file_content":
                     filename = result.get("filename", "unknown") if isinstance(result, dict) else "unknown"
                     content_len = len(result.get("content", "")) if isinstance(result, dict) else 0
-                    tool_results_summary.append(f"- read_file_content: Read {content_len} characters from {filename}")
+                    if content_len > 0:
+                        tool_results_summary.append(f"- read_file_content: Successfully read COMPLETE file '{filename}' ({content_len} characters). You now have ALL the data from this file.")
+                    else:
+                        tool_results_summary.append(f"- read_file_content: Failed to read {filename}")
                 elif tool_name == "web_search":
                     result_count = result.get("result_count", 0) if isinstance(result, dict) else 0
                     tool_results_summary.append(f"- web_search: Found {result_count} web results")
@@ -712,22 +742,47 @@ Tools Executed So Far (Iteration {iteration}/{max_iterations}):
 
 Available Tools: {tools_list}
 
-Analyze the results and decide:
-1. Do you have SUFFICIENT information to fully answer the user's question?
-2. Or do you need to execute MORE tools to get complete information?
+**CRITICAL: CHECK IF YOU ALREADY HAVE COMPLETE FILE CONTENT!**
 
-IMPORTANT GUIDELINES:
-- If you found relevant files but only got partial information from search chunks, you should use read_file_content to read the complete file
-- If you found files listing but haven't searched their content yet, you should search_documents
-- If search returned 0 results but you know files exist, you should try read_file_content on specific files
-- If you have complete, accurate information to answer the question, you should STOP
+FIRST, scan the tool results above for "Successfully read COMPLETE file". If you see this message, it means read_file_content was ALREADY executed and YOU HAVE ALL THE DATA. You MUST respond with should_continue=false immediately!
+
+**WHEN TO STOP (should_continue = false):**
+- ✓ If you see "Successfully read COMPLETE file" anywhere in tool results → STOP NOW!
+- ✓ If read_file_content appears in the tool results with content > 0 characters → STOP NOW!
+- ✓ You have sufficient information to answer the user's question → STOP!
+- ✓ You've reached iteration 3, 4 or 5 → STOP NOW!
+
+**WHEN TO CONTINUE (should_continue = true):**
+- ✗ If search_documents found chunks but you need complete file content
+- ✗ If user asks for specific YEAR but search chunks show DIFFERENT year
+- ✗ If only partial information available from search chunks
+
+**HOW TO REQUEST read_file_content:**
+Look at the tool results for search_documents. Extract the filename from the "source" field in the chunks. Then request: read_file_content(filename='EXACT_FILENAME_FROM_SOURCE')
+
+**ANTI-LOOP PROTECTION:**
+- NEVER request a tool that was already executed
+- If you see the same tool name twice in results, DO NOT request it again
 
 Respond in this EXACT JSON format:
+
+Example 1 - If you need to read a file (extract filename from search results):
 {{
-  "should_continue": true or false,
-  "reason": "brief explanation of your decision",
-  "next_tools": "list of tool names to execute next (only if should_continue is true)"
+  "should_continue": true,
+  "reason": "Need complete file, search chunks show wrong year",
+  "next_tools": "read_file_content(filename='FILENAME_FROM_SOURCE_FIELD')"
 }}
+
+Example 2 - If you already have complete file OR enough information:
+{{
+  "should_continue": false,
+  "reason": "Already have complete file content"
+}}
+
+**IMPORTANT**:
+- In "next_tools", use the EXACT filename from the "source" field in search results
+- Do NOT hardcode any filename - extract it dynamically from the tool results above
+- If read_file_content was already executed, you MUST set should_continue=false
 
 RESPOND ONLY WITH VALID JSON, NO OTHER TEXT."""
 
@@ -800,6 +855,7 @@ RESPOND ONLY WITH VALID JSON, NO OTHER TEXT."""
         web_search_empty = False
         has_doc_search = False
         doc_search_empty = False
+        has_read_file_content = False
 
         for step in agent_steps:
             if step.step_type == "result" and step.tool_call and step.tool_call.result:
@@ -823,6 +879,12 @@ RESPOND ONLY WITH VALID JSON, NO OTHER TEXT."""
                     if n_chunks == 0:
                         doc_search_empty = True
 
+                # Check if read_file_content was used successfully
+                if tool_name == "read_file_content":
+                    content_len = len(result.get("content", "")) if isinstance(result, dict) else 0
+                    if content_len > 0:
+                        has_read_file_content = True
+
         context = "\n\n".join(context_parts)
 
         # Add explicit anti-hallucination instructions when searches return empty or insufficient data
@@ -836,9 +898,13 @@ RESPOND ONLY WITH VALID JSON, NO OTHER TEXT."""
         if not context_parts:
             additional_instructions += "\n\n**CRITICAL**: No tool results were obtained. You do NOT have information to answer this question. DO NOT make up specific details like addresses, names, or facts."
 
-        # Always add general anti-hallucination instruction for document-based queries
-        if has_doc_search:
-            additional_instructions += "\n\n**CRITICAL INSTRUCTION**: You MUST base your answer ONLY on the exact text content provided in the document chunks above. DO NOT invent, extrapolate, or assume information that is not explicitly stated in the chunks. If the chunks do not contain complete information to answer the question (e.g., user asks for all grades but chunks only show 2 courses), you MUST tell the user that you only found partial information and list ONLY what you actually found. NEVER create fictional data, grades, names, or any other details. If you're unsure or the information is incomplete, say so explicitly.\n\n**DATE/YEAR VERIFICATION**: If the user asks for information from a specific year or date range, you MUST verify that the data you found matches that year/date. If the chunks show data from a DIFFERENT year than what the user asked for, you MUST tell the user that you found data from year X but they asked for year Y. For example, if the user asks for '2023 grades' and the chunks show dates like '08/07/2025', those are from 2025, NOT 2023 - you must tell the user you didn't find 2023 data.\n\n**WHEN TO USE read_file_content**: If the document chunks contain partial information from the right file but incomplete (e.g., user asks for 'all my grades' but you only see a few courses, or user asks for 2023 but you only see 2025 data), you should use the `read_file_content` tool to read the complete file content from that source file. This gives you access to ALL the information in the file, not just the search result chunks."
+        # Add instructions based on which tools were used
+        if has_read_file_content:
+            # If read_file_content was used, we have COMPLETE file content
+            additional_instructions += "\n\n**CRITICAL INSTRUCTION - COMPLETE FILE CONTENT AVAILABLE**: The read_file_content tool was used successfully, which means you have access to the COMPLETE content of the file(s), not just search chunks. You must carefully analyze ALL the text content provided in the 'read_file_content' results above.\n\n**THOROUGH SEARCH REQUIRED**: If the user asks for information from a specific year (e.g., 2024), you MUST search through the ENTIRE file content for ALL occurrences of that year. Look for date patterns like 'DD/MM/2024' or '2024' in the text. Do NOT just look at the first few lines - scan the complete document.\n\n**DATE FORMAT**: Dates are typically in DD/MM/YYYY format (e.g., '03/07/2024' means July 3rd, 2024). Extract ALL entries matching the requested year.\n\n**ANTI-HALLUCINATION**: Only report information that is explicitly present in the file content. If you cannot find data for the requested year after thoroughly searching, honestly tell the user you didn't find any entries for that specific year, and optionally mention which years you DID find data for."
+        elif has_doc_search:
+            # If only search_documents was used (partial chunks)
+            additional_instructions += "\n\n**CRITICAL INSTRUCTION**: You MUST base your answer ONLY on the exact text content provided in the document chunks above. DO NOT invent, extrapolate, or assume information that is not explicitly stated in the chunks. If the chunks do not contain complete information to answer the question (e.g., user asks for all grades but chunks only show 2 courses), you MUST tell the user that you only found partial information and list ONLY what you actually found. NEVER create fictional data, grades, names, or any other details. If you're unsure or the information is incomplete, say so explicitly.\n\n**DATE/YEAR VERIFICATION**: If the user asks for information from a specific year or date range, you MUST verify that the data you found matches that year/date. If the chunks show data from a DIFFERENT year than what the user asked for, you MUST tell the user that you found data from year X but they asked for year Y. For example, if the user asks for '2023 grades' and the chunks show dates like '08/07/2025', those are from 2025, NOT 2023 - you must tell the user you didn't find 2023 data."
 
         # Combine with user's custom instructions if any
         final_instructions = kwargs.get("instructions", "")

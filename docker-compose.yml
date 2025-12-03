@@ -123,6 +123,8 @@ services:
       - DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-spanish}
       - RESPONSE_INSTRUCTIONS=${RESPONSE_INSTRUCTIONS:-}
       - MAX_CONTEXT_LENGTH=${MAX_CONTEXT_LENGTH:-1500}
+      # Agent Configuration
+      - AGENT_PROVIDER=${AGENT_PROVIDER:-local}
     volumes:
       # Bind mount source code for hot-reload (DEVELOPMENT ONLY)
       - ./CODE:/app

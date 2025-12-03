@@ -329,12 +329,12 @@ def create_agent_provider(
     """Create agent provider based on configuration.
 
     Args:
-        provider_type: "local" or "api"
-        llm_service: LLMService instance (for local provider)
-        rag_service: RAGService instance (for local provider)
-        conversation_service: ConversationService instance (for local provider)
-        file_service: FileService instance (for local provider)
-        user_service: UserService instance (for local provider)
+        provider_type: "local", "langgraph", or "api"
+        llm_service: LLMService instance (for local/langgraph provider)
+        rag_service: RAGService instance (for local/langgraph provider)
+        conversation_service: ConversationService instance (for local/langgraph provider)
+        file_service: FileService instance (for local/langgraph provider)
+        user_service: UserService instance (for local/langgraph provider)
         api_url: External API URL (for API provider)
         api_key: External API key (for API provider)
         fallback_to_local: Whether to fallback to local on API failure
@@ -344,9 +344,20 @@ def create_agent_provider(
         AgentProvider instance
     """
     from app.agents.local_provider import LocalAgentProvider
+    from app.agents.langgraph_provider import LangGraphAgentProvider
 
     if provider_type == "local":
         return LocalAgentProvider(
+            llm_service=llm_service,
+            rag_service=rag_service,
+            conversation_service=conversation_service,
+            file_service=file_service,
+            user_service=user_service,
+            **kwargs
+        )
+
+    elif provider_type == "langgraph":
+        return LangGraphAgentProvider(
             llm_service=llm_service,
             rag_service=rag_service,
             conversation_service=conversation_service,
