@@ -66,6 +66,10 @@ class AgentResponse(BaseModel):
     routing_strategy: Optional[str] = Field(None, description="Routing strategy used")
     routing_confidence: Optional[float] = Field(None, description="Routing confidence score")
 
+    # Iteration metadata
+    iterations_completed: int = Field(default=0, description="Number of iterations completed")
+    max_iterations: int = Field(default=5, description="Maximum iterations allowed")
+
 
 class Tool(BaseModel):
     """Tool definition."""

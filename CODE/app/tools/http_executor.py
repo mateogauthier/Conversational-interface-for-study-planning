@@ -55,6 +55,7 @@ class HTTPToolExecutor:
             "delete_file": "/tools/delete_file",
             "delete_conversation": "/tools/delete_conversation",
             "web_search": "/tools/web_search",
+            "read_file_content": "/tools/read_file_content",
         }
 
         endpoint = endpoint_map.get(tool_name)

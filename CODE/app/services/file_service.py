@@ -539,6 +539,67 @@ class FileService:
         except Exception as e:
             logger.error(f"Error updating file feedback for {filename}: {str(e)}")
 
+    async def extract_text_from_file(self, filename: str) -> Optional[str]:
+        """
+        Extract full text content from a file stored in GridFS.
+
+        Args:
+            filename: Name of file to extract text from
+
+        Returns:
+            Extracted text content, or None if extraction fails
+        """
+        try:
+            # Download file to temporary location
+            temp_path = await self.download_file_to_temp(filename)
+            if not temp_path:
+                logger.error(f"Could not download file {filename} to temp location")
+                return None
+
+            try:
+                # Import document loaders
+                from langchain_community.document_loaders import (
+                    PyPDFLoader,
+                    TextLoader,
+                    UnstructuredWordDocumentLoader,
+                    UnstructuredExcelLoader
+                )
+
+                # Determine loader based on file extension
+                file_extension = Path(filename).suffix.lower()
+
+                if file_extension == '.pdf':
+                    loader = PyPDFLoader(temp_path)
+                elif file_extension in ['.txt', '.md']:
+                    loader = TextLoader(temp_path, encoding='utf-8')
+                elif file_extension in ['.doc', '.docx']:
+                    loader = UnstructuredWordDocumentLoader(temp_path)
+                elif file_extension in ['.xls', '.xlsx']:
+                    loader = UnstructuredExcelLoader(temp_path)
+                else:
+                    # Try to load as text file
+                    loader = TextLoader(temp_path, encoding='utf-8')
+
+                # Load documents
+                documents = loader.load()
+
+                # Combine all document text
+                full_text = "\n\n".join([doc.page_content for doc in documents])
+
+                logger.info(f"Extracted {len(full_text)} characters from {filename}")
+                return full_text
+
+            finally:
+                # Clean up temporary file
+                try:
+                    os.remove(temp_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete temp file {temp_path}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error extracting text from {filename}: {str(e)}")
+            return None
+
 
 # Global file service instance (will be initialized with database in main.py)
 file_service: Optional[FileService] = None

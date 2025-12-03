@@ -301,6 +301,56 @@ async def delete_file(
         raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
 
 
+@router.get("/{filename}/content")
+async def get_file_content(
+    filename: str,
+    current_user: UserInDB = Depends(get_current_user),
+    file_service: FileService = Depends(get_file_service)
+):
+    """
+    Extract and return full text content from a file.
+
+    This endpoint is used by the agent to read complete file content
+    when search chunks are insufficient to answer a question.
+    """
+    try:
+        # Check if user can access this file
+        can_access = await file_service.can_user_access_file(filename, current_user)
+
+        if not can_access:
+            raise ForbiddenHTTPException("You do not have permission to access this file")
+
+        # Get file metadata
+        file_metadata = await file_service.get_file_metadata_by_name(filename)
+
+        if not file_metadata:
+            raise FileNotFoundHTTPException(filename)
+
+        # Extract text content
+        content = await file_service.extract_text_from_file(filename)
+
+        if content is None:
+            raise FileProcessingException(f"Could not extract text from {filename}")
+
+        # Track file view
+        await file_service.track_file_view(filename)
+
+        return {
+            "filename": filename,
+            "content": content,
+            "file_size": file_metadata.file_size,
+            "chunk_count": file_metadata.chunk_count
+        }
+
+    except (FileNotFoundHTTPException, ForbiddenHTTPException):
+        raise
+    except FileProcessingException as e:
+        raise HTTPException(status_code=500, detail=str(e.message))
+    except Exception as e:
+        logger.error(f"Error getting file content: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting file content: {str(e)}")
+
+
 @router.get("/supported/extensions")
 async def get_supported_extensions(
     current_user: UserInDB = Depends(get_current_user),

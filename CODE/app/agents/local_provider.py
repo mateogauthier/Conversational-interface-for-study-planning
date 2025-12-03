@@ -134,87 +134,150 @@ class LocalAgentProvider(AgentProvider):
                 **kwargs
             )
 
-        # Agent execution loop with tools
-        step_counter += 1
-        agent_steps.append(AgentStep(
-            step_number=step_counter,
-            step_type="thought",
-            content=f"Planning: {tool_plan}"
-        ))
+        # Multi-iteration agent execution loop (ReAct pattern)
+        iteration = 0
+        max_iterations = self.max_iterations
+        should_continue = True
 
-        # Parse tool calls from plan (pass original query and kwargs for user preferences)
-        tool_calls = await self._extract_tool_calls(tool_plan, user, original_query=query, **kwargs)
+        while should_continue and iteration < max_iterations:
+            iteration += 1
 
-        # Execute tools
-        for tool_call_plan in tool_calls:
-            tool_name = tool_call_plan["name"]
-            parameters = tool_call_plan["parameters"]
-
-            # Check if tool requires confirmation
-            tool_def = get_tool(tool_name)
-            if tool_def and tool_def.safety == ToolSafety.REQUIRES_CONFIRM:
-                # Check if should auto-approve
-                if not (auto_approve_tools or self.auto_approve_reads):
-                    # Create pending confirmation
-                    confirmation = await self._create_pending_confirmation(
-                        tool_name=tool_name,
-                        parameters=parameters,
-                        user=user,
-                        conversation_id=conversation_id
-                    )
-
-                    step_counter += 1
-                    agent_steps.append(AgentStep(
-                        step_number=step_counter,
-                        step_type="confirmation_required",
-                        content=f"Waiting for confirmation to execute: {tool_name}"
-                    ))
-
-                    return AgentResponse(
-                        answer=f"I need your confirmation to {tool_def.description.lower()}. Please review and approve.",
-                        agent_steps=agent_steps,
-                        tools_executed=tools_executed,
-                        pending_confirmations=[confirmation],
-                        requires_confirmation=True,
-                        is_complete=False,
-                        conversation_id=conversation_id
-                    )
-
-            # Execute tool
+            # Add iteration marker
             step_counter += 1
             agent_steps.append(AgentStep(
                 step_number=step_counter,
-                step_type="tool_call",
-                content=f"Executing {tool_name}",
-                tool_call=ToolCall(
-                    tool_name=tool_name,
-                    parameters=parameters
-                )
+                step_type="thought",
+                content=f"Iteration {iteration}/{max_iterations}: {tool_plan if iteration == 1 else 'Re-evaluating based on results...'}"
             ))
 
-            tool_result = await self.tool_executor.execute(
-                tool_name=tool_name,
-                parameters=parameters,
-                user=user
-            )
+            # Parse tool calls from plan (pass original query and kwargs for user preferences)
+            tool_calls = await self._extract_tool_calls(tool_plan, user, original_query=query, **kwargs)
 
-            tools_executed.append(tool_name)
-
-            step_counter += 1
-            if tool_result.error:
+            # If no tools in this iteration, break
+            if not tool_calls:
+                step_counter += 1
                 agent_steps.append(AgentStep(
                     step_number=step_counter,
-                    step_type="error",
-                    content=f"Tool execution failed: {tool_result.error}",
-                    tool_call=tool_result
+                    step_type="thought",
+                    content="No additional tools needed. Ready to generate answer."
                 ))
+                break
+
+            # Execute tools for this iteration
+            for tool_call_plan in tool_calls:
+                tool_name = tool_call_plan["name"]
+                parameters = tool_call_plan["parameters"]
+
+                # Check if tool requires confirmation
+                tool_def = get_tool(tool_name)
+                if tool_def and tool_def.safety == ToolSafety.REQUIRES_CONFIRM:
+                    # Check if should auto-approve
+                    if not (auto_approve_tools or self.auto_approve_reads):
+                        # Create pending confirmation
+                        confirmation = await self._create_pending_confirmation(
+                            tool_name=tool_name,
+                            parameters=parameters,
+                            user=user,
+                            conversation_id=conversation_id
+                        )
+
+                        step_counter += 1
+                        agent_steps.append(AgentStep(
+                            step_number=step_counter,
+                            step_type="confirmation_required",
+                            content=f"Waiting for confirmation to execute: {tool_name}"
+                        ))
+
+                        return AgentResponse(
+                            answer=f"I need your confirmation to {tool_def.description.lower()}. Please review and approve.",
+                            agent_steps=agent_steps,
+                            tools_executed=tools_executed,
+                            pending_confirmations=[confirmation],
+                            requires_confirmation=True,
+                            is_complete=False,
+                            conversation_id=conversation_id
+                        )
+
+                # Execute tool
+                step_counter += 1
+                agent_steps.append(AgentStep(
+                    step_number=step_counter,
+                    step_type="tool_call",
+                    content=f"Executing {tool_name}",
+                    tool_call=ToolCall(
+                        tool_name=tool_name,
+                        parameters=parameters
+                    )
+                ))
+
+                tool_result = await self.tool_executor.execute(
+                    tool_name=tool_name,
+                    parameters=parameters,
+                    user=user
+                )
+
+                tools_executed.append(tool_name)
+
+                step_counter += 1
+                if tool_result.error:
+                    agent_steps.append(AgentStep(
+                        step_number=step_counter,
+                        step_type="error",
+                        content=f"Tool execution failed: {tool_result.error}",
+                        tool_call=tool_result
+                    ))
+                else:
+                    agent_steps.append(AgentStep(
+                        step_number=step_counter,
+                        step_type="result",
+                        content=f"Tool completed successfully",
+                        tool_call=tool_result
+                    ))
+
+            # After executing tools, check if we need another iteration
+            if iteration < max_iterations:
+                step_counter += 1
+                agent_steps.append(AgentStep(
+                    step_number=step_counter,
+                    step_type="thought",
+                    content=f"Evaluating if more information is needed..."
+                ))
+
+                # Ask LLM if it needs more tools or is ready to answer
+                decision = await self._should_continue_iteration(
+                    query=query,
+                    agent_steps=agent_steps,
+                    iteration=iteration,
+                    max_iterations=max_iterations,
+                    user=user,
+                    **kwargs
+                )
+
+                if decision["should_continue"]:
+                    tool_plan = decision["next_plan"]
+                    step_counter += 1
+                    agent_steps.append(AgentStep(
+                        step_number=step_counter,
+                        step_type="thought",
+                        content=f"Need more information: {decision['reason']}"
+                    ))
+                else:
+                    step_counter += 1
+                    agent_steps.append(AgentStep(
+                        step_number=step_counter,
+                        step_type="thought",
+                        content=f"Sufficient information gathered: {decision['reason']}"
+                    ))
+                    should_continue = False
             else:
+                # Max iterations reached
+                step_counter += 1
                 agent_steps.append(AgentStep(
                     step_number=step_counter,
-                    step_type="result",
-                    content=f"Tool completed successfully",
-                    tool_call=tool_result
+                    step_type="thought",
+                    content=f"Maximum iterations ({max_iterations}) reached. Generating answer with available information."
                 ))
+                should_continue = False
 
         # Generate final answer using LLM with tool results
         final_answer = await self._generate_final_answer(
@@ -231,7 +294,8 @@ class LocalAgentProvider(AgentProvider):
             content=final_answer,
             metadata={
                 "tools_executed": tools_executed,
-                "agent_steps_count": len(agent_steps)
+                "agent_steps_count": len(agent_steps),
+                "iterations_completed": iteration
             }
         )
 
@@ -243,7 +307,9 @@ class LocalAgentProvider(AgentProvider):
             requires_confirmation=False,
             is_complete=True,
             conversation_id=conversation_id,
-            message_id=message_id
+            message_id=message_id,
+            iterations_completed=iteration,
+            max_iterations=max_iterations
         )
 
     async def confirm_action(
@@ -493,6 +559,18 @@ PLAN: Answer directly"""
                         if quoted:
                             parameters["filename"] = quoted.group(1)
 
+                elif tool.name == "read_file_content":
+                    # Extract filename parameter (same logic as get_file_info)
+                    import re
+                    filename_match = re.search(r'filename=["\'"]([^"\']+)["\']', plan)
+                    if filename_match:
+                        parameters["filename"] = filename_match.group(1)
+                    else:
+                        # Try to find any quoted text that might be the filename
+                        quoted = re.search(r'["\']([^"\']+\.(?:pdf|docx|txt|xlsx|md))["\']', plan, re.IGNORECASE)
+                        if quoted:
+                            parameters["filename"] = quoted.group(1)
+
                 # Only add tool call if we have required parameters
                 if tool.name == "search_documents" and "query" in parameters:
                     tool_calls.append({
@@ -510,7 +588,7 @@ PLAN: Answer directly"""
                         "name": tool.name,
                         "parameters": parameters
                     })
-                elif tool.name in ["get_file_info", "delete_file"] and "filename" in parameters:
+                elif tool.name in ["get_file_info", "delete_file", "read_file_content"] and "filename" in parameters:
                     tool_calls.append({
                         "name": tool.name,
                         "parameters": parameters
@@ -570,6 +648,144 @@ PLAN: Answer directly"""
             model_used=llm_response.get("model_used")
         )
 
+    async def _should_continue_iteration(
+        self,
+        query: str,
+        agent_steps: List[AgentStep],
+        iteration: int,
+        max_iterations: int,
+        user: UserInDB,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Determine if agent needs another iteration.
+
+        Args:
+            query: Original user query
+            agent_steps: Steps executed so far
+            iteration: Current iteration number
+            max_iterations: Maximum allowed iterations
+            user: Authenticated user
+
+        Returns:
+            Dict with:
+                - should_continue: bool
+                - reason: str explanation
+                - next_plan: str (if should_continue is True)
+        """
+        # Build summary of what we know so far
+        tool_results_summary = []
+        for step in agent_steps:
+            if step.step_type == "result" and step.tool_call and step.tool_call.result:
+                tool_name = step.tool_call.tool_name
+                result = step.tool_call.result
+
+                # Create concise summary of result
+                if tool_name == "search_documents":
+                    n_chunks = result.get("n_chunks_found", 0) if isinstance(result, dict) else 0
+                    tool_results_summary.append(f"- search_documents: Found {n_chunks} document chunks")
+                elif tool_name == "list_files":
+                    files = result.get("files", []) if isinstance(result, dict) else []
+                    tool_results_summary.append(f"- list_files: Found {len(files)} files")
+                elif tool_name == "read_file_content":
+                    filename = result.get("filename", "unknown") if isinstance(result, dict) else "unknown"
+                    content_len = len(result.get("content", "")) if isinstance(result, dict) else 0
+                    tool_results_summary.append(f"- read_file_content: Read {content_len} characters from {filename}")
+                elif tool_name == "web_search":
+                    result_count = result.get("result_count", 0) if isinstance(result, dict) else 0
+                    tool_results_summary.append(f"- web_search: Found {result_count} web results")
+                else:
+                    tool_results_summary.append(f"- {tool_name}: Completed")
+
+        summary = "\n".join(tool_results_summary) if tool_results_summary else "No tool results yet"
+
+        # Get available tools for user
+        available_tools = get_user_tools(user)
+        tools_list = ", ".join([t.name for t in available_tools])
+
+        # Ask LLM if it can answer the question or needs more tools
+        decision_prompt = f"""You are evaluating whether you have enough information to answer the user's question.
+
+User's Question: {query}
+
+Tools Executed So Far (Iteration {iteration}/{max_iterations}):
+{summary}
+
+Available Tools: {tools_list}
+
+Analyze the results and decide:
+1. Do you have SUFFICIENT information to fully answer the user's question?
+2. Or do you need to execute MORE tools to get complete information?
+
+IMPORTANT GUIDELINES:
+- If you found relevant files but only got partial information from search chunks, you should use read_file_content to read the complete file
+- If you found files listing but haven't searched their content yet, you should search_documents
+- If search returned 0 results but you know files exist, you should try read_file_content on specific files
+- If you have complete, accurate information to answer the question, you should STOP
+
+Respond in this EXACT JSON format:
+{{
+  "should_continue": true or false,
+  "reason": "brief explanation of your decision",
+  "next_tools": "list of tool names to execute next (only if should_continue is true)"
+}}
+
+RESPOND ONLY WITH VALID JSON, NO OTHER TEXT."""
+
+        try:
+            # Get LLM decision
+            response = await self.llm_service.generate_with_context(
+                prompt=decision_prompt,
+                context="",
+                conversation_history=[],
+                model=kwargs.get("model"),
+                language="english"  # Force English for structured output
+            )
+
+            # Parse JSON response
+            import json
+            import re
+
+            # Extract JSON from response (might have markdown formatting)
+            json_match = re.search(r'\{[^}]+\}', response["response"], re.DOTALL)
+            if json_match:
+                decision = json.loads(json_match.group(0))
+            else:
+                # Fallback: stop after first iteration to avoid infinite loops
+                logger.warning(f"Could not parse LLM decision, defaulting to stop")
+                return {
+                    "should_continue": False,
+                    "reason": "Could not determine if more information needed",
+                    "next_plan": ""
+                }
+
+            should_continue = decision.get("should_continue", False)
+            reason = decision.get("reason", "No reason provided")
+            next_tools = decision.get("next_tools", "")
+
+            if should_continue and next_tools:
+                # Generate new tool plan
+                next_plan = f"Based on current results, execute these tools: {next_tools}"
+                return {
+                    "should_continue": True,
+                    "reason": reason,
+                    "next_plan": next_plan
+                }
+            else:
+                return {
+                    "should_continue": False,
+                    "reason": reason,
+                    "next_plan": ""
+                }
+
+        except Exception as e:
+            logger.error(f"Error in _should_continue_iteration: {e}")
+            # Fallback: stop to avoid infinite loops
+            return {
+                "should_continue": False,
+                "reason": f"Error evaluating continuation: {str(e)}",
+                "next_plan": ""
+            }
+
     async def _generate_final_answer(
         self,
         query: str,
@@ -622,7 +838,7 @@ PLAN: Answer directly"""
 
         # Always add general anti-hallucination instruction for document-based queries
         if has_doc_search:
-            additional_instructions += "\n\n**CRITICAL INSTRUCTION**: You MUST base your answer ONLY on the exact text content provided in the document chunks above. DO NOT invent, extrapolate, or assume information that is not explicitly stated in the chunks. If the chunks do not contain complete information to answer the question (e.g., user asks for all grades but chunks only show 2 courses), you MUST tell the user that you only found partial information and list ONLY what you actually found. NEVER create fictional data, grades, names, or any other details. If you're unsure or the information is incomplete, say so explicitly."
+            additional_instructions += "\n\n**CRITICAL INSTRUCTION**: You MUST base your answer ONLY on the exact text content provided in the document chunks above. DO NOT invent, extrapolate, or assume information that is not explicitly stated in the chunks. If the chunks do not contain complete information to answer the question (e.g., user asks for all grades but chunks only show 2 courses), you MUST tell the user that you only found partial information and list ONLY what you actually found. NEVER create fictional data, grades, names, or any other details. If you're unsure or the information is incomplete, say so explicitly.\n\n**DATE/YEAR VERIFICATION**: If the user asks for information from a specific year or date range, you MUST verify that the data you found matches that year/date. If the chunks show data from a DIFFERENT year than what the user asked for, you MUST tell the user that you found data from year X but they asked for year Y. For example, if the user asks for '2023 grades' and the chunks show dates like '08/07/2025', those are from 2025, NOT 2023 - you must tell the user you didn't find 2023 data.\n\n**WHEN TO USE read_file_content**: If the document chunks contain partial information from the right file but incomplete (e.g., user asks for 'all my grades' but you only see a few courses, or user asks for 2023 but you only see 2025 data), you should use the `read_file_content` tool to read the complete file content from that source file. This gives you access to ALL the information in the file, not just the search result chunks."
 
         # Combine with user's custom instructions if any
         final_instructions = kwargs.get("instructions", "")

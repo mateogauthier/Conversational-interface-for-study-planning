@@ -89,6 +89,55 @@ async def startup_event():
         rag_service_module.rag_service = rag_service_module.RAGService(file_service=file_service)
         logger.info("RAG service initialized with file_service")
 
+        # Auto-reindex all files on startup to ensure ChromaDB is in sync with GridFS
+        try:
+            logger.info("🔄 Starting automatic file reindexing...")
+            all_files = await file_service.list_all_files()
+
+            if not all_files:
+                logger.info("No files found to index")
+            else:
+                total_files = len(all_files)
+                indexed_count = 0
+                skipped_count = 0
+                failed_count = 0
+
+                for file_meta in all_files:
+                    filename = file_meta.get("filename")
+                    try:
+                        # Process document from GridFS
+                        chunk_count = await rag_service_module.rag_service.process_document_from_gridfs(
+                            filename=filename,
+                            user_id=file_meta.get("user_id", "system"),
+                            is_public=file_meta.get("is_public", False)
+                        )
+
+                        if chunk_count > 0:
+                            # Update file metadata with processing status
+                            await file_service.update_file_processed_status(
+                                filename=filename,
+                                processed=True,
+                                chunk_count=chunk_count
+                            )
+                            indexed_count += 1
+                            logger.info(f"✓ Indexed {filename}: {chunk_count} chunks")
+                        else:
+                            skipped_count += 1
+                            logger.warning(f"⊘ Skipped {filename}: 0 chunks generated")
+
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f"✗ Failed to index {filename}: {e}")
+
+                logger.info(
+                    f"📊 Reindexing complete: {indexed_count}/{total_files} files indexed, "
+                    f"{skipped_count} skipped, {failed_count} failed"
+                )
+
+        except Exception as e:
+            logger.error(f"Auto-reindex failed: {e}")
+            # Don't crash the app if reindexing fails
+
         # Initialize agent provider
         if settings.enable_agent_tools:
             agent_provider = create_agent_provider(
