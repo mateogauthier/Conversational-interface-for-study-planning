@@ -228,10 +228,18 @@ class LLMService:
             # Generate pure markdown - let frontend extract artifacts
             markdown_instruction = self._get_markdown_generation_instruction(language)
 
+            # Add hallucination prevention instruction
+            factual_instruction = ""
+            if not context or context.strip() in ["", "No relevant context found.", "No relevant context found"]:
+                factual_instruction = "\n\n**IMPORTANT**: No document context is available. Only answer with general knowledge. If you don't know the answer, say so explicitly - DO NOT make up specific information like addresses, names, or facts."
+            else:
+                factual_instruction = "\n\n**IMPORTANT**: Base your answer ONLY on the provided context from documents. If the context doesn't contain the information needed to answer the question, say so clearly - DO NOT fabricate information."
+
             # Create enhanced prompt with markdown instructions
             enhanced_prompt = f"""{combined_instructions}
 
 {markdown_instruction}
+{factual_instruction}
 
 {history_section}Context from documents: {context}
 

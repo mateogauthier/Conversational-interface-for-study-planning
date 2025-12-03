@@ -61,6 +61,36 @@ services:
       - study-planning-network
     restart: unless-stopped
 
+  # Agent Tools API Service
+  agent-api:
+    build:
+      context: ./AGENT_API
+      dockerfile: Dockerfile
+    container_name: study-planning-agent-api
+    ports:
+      - "8002:8002"
+    environment:
+      # Main API URL for HTTP communication
+      - MAIN_API_URL=http://fastapi-app:8000
+      # CORS Configuration
+      - CORS_ORIGINS=http://localhost:8000,http://localhost:3000,http://localhost:8002
+    volumes:
+      # Bind mount agent API code for hot-reload only
+      - ./AGENT_API/app:/agent_api/app
+    depends_on:
+      fastapi-app:
+        condition: service_healthy
+    networks:
+      - study-planning-network
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   # FastAPI Application Service
   fastapi-app:
     build:
@@ -81,7 +111,7 @@ services:
       - CHROMADB_PORT=${CHROMADB_PORT:-8000}
       # Ollama Configuration
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama2:latest}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma3:4b}
       # CORS Configuration
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
       # Auth0 Backend Configuration
@@ -93,6 +123,8 @@ services:
       - DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-spanish}
       - RESPONSE_INSTRUCTIONS=${RESPONSE_INSTRUCTIONS:-}
       - MAX_CONTEXT_LENGTH=${MAX_CONTEXT_LENGTH:-1500}
+      # Agent Configuration
+      - AGENT_PROVIDER=${AGENT_PROVIDER:-local}
     volumes:
       # Bind mount source code for hot-reload (DEVELOPMENT ONLY)
       - ./CODE:/app

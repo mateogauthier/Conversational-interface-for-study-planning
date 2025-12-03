@@ -75,6 +75,25 @@ class Settings(BaseSettings):
     routing_mode: str = Field(default="hybrid")  # "heuristic", "llm", or "hybrid"
     routing_confidence_threshold: float = Field(default=0.7)
 
+    # Agent Configuration
+    enable_agent_tools: bool = Field(default=True, description="Enable agentic tool execution")
+    agent_provider: str = Field(default="local", description="Agent provider: 'local' or 'api'")
+    agent_max_iterations: int = Field(default=5, description="Maximum agent execution iterations")
+    agent_auto_approve_reads: bool = Field(default=True, description="Auto-approve read-only tool executions")
+    agent_auto_approve_writes: bool = Field(default=False, description="Auto-approve write tool executions")
+
+    # External Agent API Configuration (for future use)
+    agent_api_url: Optional[str] = Field(default=None, description="External agent API base URL")
+    agent_api_key: Optional[str] = Field(default=None, description="External agent API key")
+    agent_api_timeout: int = Field(default=30, description="External agent API timeout in seconds")
+    agent_fallback_to_local: bool = Field(default=True, description="Fallback to local provider if API fails")
+
+    # Internal Service Authentication
+    internal_service_key: Optional[str] = Field(
+        default="dev-internal-service-key-change-in-production",
+        description="Shared secret for service-to-service authentication (agent-api to main API)"
+    )
+
     # CORS Configuration (accepts JSON array or comma-separated string)
     cors_origins: Union[str, List[str]] = Field(
         default=["http://localhost:3000", "http://localhost:8000"]

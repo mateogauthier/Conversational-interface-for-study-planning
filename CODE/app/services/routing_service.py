@@ -16,6 +16,7 @@ class RoutingStrategy(str, Enum):
     NO_RETRIEVAL = "no_retrieval"  # Answer directly without documents
     SINGLE_RETRIEVAL = "single_retrieval"  # Standard RAG with one search
     MULTI_RETRIEVAL = "multi_retrieval"  # Complex queries needing multiple searches
+    AGENT_TOOLS = "agent_tools"  # Requires tool execution (file ops, conversation management, etc.)
 
 
 class RoutingService:
@@ -84,6 +85,32 @@ class RoutingService:
         """
         query_lower = query.lower().strip()
 
+        # Category 0: Tool-requiring queries (AGENT_TOOLS) - check FIRST
+        tool_indicators = [
+            # File operations
+            'list my files', 'show my files', 'what files do i have', 'my files',
+            'delete file', 'remove file', 'delete this file', 'elimina archivo',
+            'lista mis archivos', 'mis archivos', 'mostrar archivos',
+            # Conversation operations
+            'show my conversations', 'list conversations', 'my conversations',
+            'delete conversation', 'remove conversation', 'delete this conversation',
+            'mis conversaciones', 'mostrar conversaciones', 'elimina conversación',
+            # User stats
+            'my statistics', 'my stats', 'how many files', 'how many queries',
+            'mis estadísticas', 'cuántos archivos', 'cuántas consultas',
+            # Multi-step patterns
+            'first...then', 'after that', 'and then', 'y luego', 'después',
+            'list...and', 'show...and', 'get...and', 'find...and then'
+        ]
+
+        if any(indicator in query_lower for indicator in tool_indicators):
+            return {
+                "strategy": RoutingStrategy.AGENT_TOOLS,
+                "confidence": 0.88,
+                "reasoning": "Query requires tool execution (file/conversation operations or multi-step actions)",
+                "method": "heuristic"
+            }
+
         # Category 1: Greetings and simple conversational queries (NO RETRIEVAL)
         greetings = [
             'hello', 'hi', 'hey', 'hola', 'buenos días', 'buenas tardes',
@@ -122,22 +149,54 @@ class RoutingService:
             'calendario', 'calendar', 'horario', 'schedule'
         ]
 
-        # Check for academic keywords FIRST
+        # Check for academic keywords
         has_academic_keywords = any(keyword in query_lower for keyword in academic_strong_keywords)
 
-        # Category 2b: Simple factual questions (NO RETRIEVAL) - but only if NO academic keywords
+        # Category 2b: Simple factual questions (NO RETRIEVAL)
         simple_patterns = [
             'what is', 'qué es', 'cuánto es', 'how much', 'define',
-            'what does', 'qué significa', 'who is', 'quién es'
+            'what does', 'qué significa', 'who is', 'quién es', 'how do i',
+            'cómo se', 'explain', 'explica', 'what are', 'qué son',
+            'tell me about', 'háblame de', 'describe', 'describe'
         ]
 
-        # Only no-retrieval if very short, clearly general knowledge, AND no academic keywords
-        if (any(pattern in query_lower for pattern in simple_patterns) and
-            len(query.split()) <= 8 and
-            not has_academic_keywords):
+        # Expand general knowledge indicators
+        general_knowledge_indicators = [
+            'python', 'java', 'javascript', 'programming', 'programación',
+            'algorithm', 'algoritmo', 'data structure', 'estructura de datos',
+            'mathematics', 'matemáticas', 'physics', 'física', 'chemistry', 'química',
+            'biology', 'biología', 'history', 'historia', 'geography', 'geografía',
+            'derivative', 'derivada', 'integral', 'equation', 'ecuación',
+            'function', 'función', 'variable', 'constant', 'constante',
+            'list', 'lista', 'array', 'dictionary', 'diccionario', 'tuple', 'tupla',
+            'loop', 'bucle', 'if statement', 'condicional', 'class', 'clase'
+        ]
+
+        # Academic context indicators (words that suggest document context is needed)
+        academic_context_indicators = [
+            'my', 'mis', 'our', 'nuestro', 'this university', 'esta universidad',
+            'according to', 'según', 'in the', 'en el', 'for this course',
+            'para este curso', 'here', 'aquí', 'at', 'en'
+        ]
+
+        has_simple_pattern = any(pattern in query_lower for pattern in simple_patterns)
+        has_general_knowledge = any(indicator in query_lower for indicator in general_knowledge_indicators)
+        has_academic_context = any(ctx in query_lower for ctx in academic_context_indicators)
+
+        # High priority: General knowledge questions (even with academic words, if they're clearly general)
+        if has_simple_pattern and has_general_knowledge and not has_academic_context:
             return {
                 "strategy": RoutingStrategy.NO_RETRIEVAL,
-                "confidence": 0.80,
+                "confidence": 0.90,
+                "reasoning": "General knowledge question - no university documents needed",
+                "method": "heuristic"
+            }
+
+        # Medium priority: Simple questions without academic context
+        if has_simple_pattern and not has_academic_context and len(query.split()) <= 12:
+            return {
+                "strategy": RoutingStrategy.NO_RETRIEVAL,
+                "confidence": 0.75,
                 "reasoning": "Simple factual question without academic context",
                 "method": "heuristic"
             }
@@ -164,8 +223,8 @@ class RoutingService:
 
         has_complexity = any(indicator in query_lower for indicator in complexity_indicators)
 
-        # If both complex AND academic, it's multi-retrieval
-        if has_complexity and has_academic_keywords:
+        # If both complex AND academic WITH context, it's multi-retrieval
+        if has_complexity and has_academic_keywords and has_academic_context:
             return {
                 "strategy": RoutingStrategy.MULTI_RETRIEVAL,
                 "confidence": 0.85,
@@ -173,30 +232,47 @@ class RoutingService:
                 "method": "heuristic"
             }
 
-        # Category 4: Academic queries (SINGLE RETRIEVAL - high confidence)
-        if has_academic_keywords:
+        # Category 4: Academic queries (SINGLE RETRIEVAL - only if has context)
+        # Academic keywords alone aren't enough - need context indicators too
+        if has_academic_keywords and has_academic_context:
             return {
                 "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
-                "confidence": 0.90,
-                "reasoning": "Academic keywords detected - document retrieval needed",
+                "confidence": 0.88,
+                "reasoning": "Academic query with context indicators - document retrieval needed",
                 "method": "heuristic"
             }
 
-        # Category 5: Uncertain - medium confidence, default to safe option
-        # If query is long and unclear, assume it needs retrieval
-        if len(query.split()) > 10:
+        # Category 5: Check for document/file references
+        document_references = [
+            'document', 'documento', 'file', 'archivo', 'pdf', 'syllabus',
+            'material', 'materials', 'according to', 'según', 'in the',
+            'en el documento', 'in my files', 'en mis archivos'
+        ]
+
+        if any(ref in query_lower for ref in document_references):
+            return {
+                "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
+                "confidence": 0.82,
+                "reasoning": "Query explicitly references documents/files",
+                "method": "heuristic"
+            }
+
+        # Category 6: Uncertain queries - use hybrid approach
+        # Long queries likely need context
+        if len(query.split()) > 15:
             return {
                 "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
                 "confidence": 0.60,
-                "reasoning": "Long query with uncertain intent - defaulting to retrieval",
+                "reasoning": "Long query with uncertain intent - may benefit from document context",
                 "method": "heuristic"
             }
 
-        # Default fallback: short, unclear queries
+        # Default fallback: short, unclear queries - prefer direct answers
+        # Most users asking general questions don't expect document retrieval
         return {
-            "strategy": RoutingStrategy.SINGLE_RETRIEVAL,
-            "confidence": 0.50,
-            "reasoning": "Uncertain query type - defaulting to safe retrieval option",
+            "strategy": RoutingStrategy.NO_RETRIEVAL,
+            "confidence": 0.55,
+            "reasoning": "No clear indicators - defaulting to direct answer (general knowledge)",
             "method": "heuristic"
         }
 
@@ -224,9 +300,12 @@ class RoutingService:
 3. MULTI_RETRIEVAL: Complex questions needing multiple documents or deep reasoning
    Examples: "compare all my programming courses", "create a study plan for next semester", "what courses should I take to improve my GPA"
 
+4. AGENT_TOOLS: Questions requiring tool execution (file management, conversation operations, statistics)
+   Examples: "show my files", "list my conversations", "delete this file", "how many files do I have", "show files and search for calculus"
+
 User query: "{query}"
 
-Respond with ONLY the category name (NO_RETRIEVAL, SINGLE_RETRIEVAL, or MULTI_RETRIEVAL) and a brief reason.
+Respond with ONLY the category name (NO_RETRIEVAL, SINGLE_RETRIEVAL, MULTI_RETRIEVAL, or AGENT_TOOLS) and a brief reason.
 Format: CATEGORY | reason"""
 
         try:
@@ -251,6 +330,9 @@ Format: CATEGORY | reason"""
             if "NO_RETRIEVAL" in category_str:
                 strategy = RoutingStrategy.NO_RETRIEVAL
                 confidence = 0.85
+            elif "AGENT_TOOLS" in category_str:
+                strategy = RoutingStrategy.AGENT_TOOLS
+                confidence = 0.82
             elif "MULTI_RETRIEVAL" in category_str:
                 strategy = RoutingStrategy.MULTI_RETRIEVAL
                 confidence = 0.80
