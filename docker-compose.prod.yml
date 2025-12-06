@@ -1,7 +1,96 @@
 version: '3.8'
 
 services:
-  # FastAPI Application Service (Production)
+  # Frontend Service (React + Nginx) - Production
+  frontend:
+    build:
+      context: ./FRONTEND
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_AUTH0_DOMAIN: ${VITE_AUTH0_DOMAIN}
+        VITE_AUTH0_CLIENT_ID: ${VITE_AUTH0_CLIENT_ID}
+        VITE_AUTH0_AUDIENCE: ${VITE_AUTH0_AUDIENCE}
+        VITE_AUTH0_REDIRECT_URI: ${VITE_AUTH0_REDIRECT_URI}
+    container_name: study-planning-frontend-prod
+    ports:
+      - "3000:80"
+    depends_on:
+      fastapi-app:
+        condition: service_healthy
+    networks:
+      - study-planning-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # MongoDB Database Service - Production
+  mongodb:
+    image: mongo:7.0
+    container_name: study-planning-mongodb-prod
+    expose:
+      - "27017"  # Internal only for security
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - study-planning-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ChromaDB Vector Database Service - Production
+  chromadb-server:
+    image: chromadb/chroma:latest
+    container_name: study-planning-chroma-prod
+    expose:
+      - "8000"  # Internal only for security
+    volumes:
+      - chroma_db:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - study-planning-network
+    restart: always
+
+  # Agent Tools API Service - Production
+  agent-api:
+    build:
+      context: ./AGENT_API
+      dockerfile: Dockerfile
+    container_name: study-planning-agent-api-prod
+    expose:
+      - "8002"  # Internal only
+    environment:
+      - MAIN_API_URL=http://fastapi-app:8000
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    depends_on:
+      fastapi-app:
+        condition: service_healthy
+    networks:
+      - study-planning-network
+    # Production command: NO --reload flag
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "2"]
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # FastAPI Application Service - Production
   fastapi-app:
     build:
       context: ./CODE
@@ -10,23 +99,47 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama2:latest
+      # MongoDB Configuration
+      - MONGO_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
+      - MONGO_DATABASE_NAME=${MONGO_DATABASE_NAME}
+      - MONGO_MAX_POOL_SIZE=${MONGO_MAX_POOL_SIZE:-50}
+      - MONGO_MIN_POOL_SIZE=${MONGO_MIN_POOL_SIZE:-10}
+      # ChromaDB Configuration
+      - CHROMADB_MODE=${CHROMADB_MODE:-client}
+      - CHROMADB_HOST=${CHROMADB_HOST:-chromadb-server}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
+      # Ollama Configuration
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      # CORS Configuration
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      # Auth0 Backend Configuration
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_API_AUDIENCE=${AUTH0_API_AUDIENCE}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      # RAG & LLM Configuration
+      - DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE}
+      - RESPONSE_INSTRUCTIONS=${RESPONSE_INSTRUCTIONS}
+      - MAX_CONTEXT_LENGTH=${MAX_CONTEXT_LENGTH}
+      # Agent Configuration
+      - AGENT_PROVIDER=${AGENT_PROVIDER}
+      # Upload directory
       - UPLOAD_DIR=data/uploads
-      - DEFAULT_LANGUAGE=auto
-      - RESPONSE_INSTRUCTIONS=
-      - MAX_CONTEXT_LENGTH=1500
     volumes:
       # Named volumes only (NO source code bind mount for production)
       - uploads:/app/data/uploads
-      - chroma_db:/app/data/chroma_db
     depends_on:
+      mongodb:
+        condition: service_healthy
+      chromadb-server:
+        condition: service_started
       ollama:
         condition: service_healthy
     networks:
       - study-planning-network
-    # Production command: NO --reload flag
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    # Production command: NO --reload flag, multiple workers
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -34,22 +147,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
 
-  # Ollama LLM Service (Production)
+  # Ollama LLM Service - Production
   ollama:
     image: ollama/ollama:latest
     container_name: study-planning-ollama-prod
-    # Internal port only (not exposed to host for security)
     expose:
-      - "11434"
+      - "11434"  # Internal only for security
     volumes:
       - ollama-models:/root/.ollama
     networks:
@@ -64,9 +168,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 10G
+          memory: 1500M  # Reduced for t3.small (2GB total RAM)
         reservations:
-          memory: 4G
+          memory: 1G
           devices:
             - driver: nvidia
               count: all
@@ -83,4 +187,6 @@ volumes:
   chroma_db:
     driver: local
   ollama-models:
+    driver: local
+  mongo-data:
     driver: local
