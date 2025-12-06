@@ -171,10 +171,12 @@ services:
           memory: 1500M  # Reduced for t3.small (2GB total RAM)
         reservations:
           memory: 1G
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+          # GPU configuration removed for CPU instances
+          # Uncomment below for GPU instances (g4dn.xlarge, etc.)
+          # devices:
+          #   - driver: nvidia
+          #     count: all
+          #     capabilities: [gpu]
 
 networks:
   study-planning-network:
