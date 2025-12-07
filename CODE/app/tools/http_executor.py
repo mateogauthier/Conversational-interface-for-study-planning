@@ -56,6 +56,14 @@ class HTTPToolExecutor:
             "delete_conversation": "/tools/delete_conversation",
             "web_search": "/tools/web_search",
             "read_file_content": "/tools/read_file_content",
+            # University/Academic endpoints
+            "get_university_subjects": "/tools/get_university_subjects",
+            "get_degree_curriculum": "/tools/get_degree_curriculum",
+            "get_degree_subjects": "/tools/get_degree_subjects",
+            "upload_student_schooling": "/tools/upload_student_schooling",
+            "get_student_schooling": "/tools/get_student_schooling",
+            "get_student_plan": "/tools/get_student_plan",
+            "update_student_plan": "/tools/update_student_plan",
         }
 
         endpoint = endpoint_map.get(tool_name)

@@ -37,6 +37,13 @@ class AgentState(TypedDict):
     file_content: Optional[Dict[str, Any]]
     file_metadata: Optional[Dict[str, Any]]
 
+    # Academic tool results
+    student_schooling: Optional[Dict[str, Any]]
+    student_plan: Optional[Dict[str, Any]]
+    degree_curriculum: Optional[Dict[str, Any]]
+    degree_subjects: Optional[Dict[str, Any]]
+    university_subjects: Optional[Dict[str, Any]]
+
     # Agent tracking
     agent_steps: Annotated[Sequence[AgentStep], add]  # Append-only list
     tools_executed: Annotated[Sequence[str], add]
@@ -104,6 +111,9 @@ class LangGraphAgentProvider(AgentProvider):
                                  ├─> search_documents -> route_after_search?
                                  │                     ├─> web_search -> generate_answer -> END
                                  │                     └─> generate_answer -> END (chunks found)
+                                 ├─> get_student_schooling -> generate_answer -> END
+                                 ├─> get_student_plan -> generate_answer -> END
+                                 ├─> get_degree_curriculum -> generate_answer -> END
                                  └─> generate_answer -> END (conversational queries)
         """
         workflow = StateGraph(AgentState)
@@ -113,6 +123,10 @@ class LangGraphAgentProvider(AgentProvider):
         workflow.add_node("search_documents", self._search_documents_node)
         workflow.add_node("web_search", self._web_search_node)
         workflow.add_node("generate_answer", self._generate_answer_node)
+        # Academic tool nodes
+        workflow.add_node("get_student_schooling", self._get_student_schooling_node)
+        workflow.add_node("get_student_plan", self._get_student_plan_node)
+        workflow.add_node("get_degree_curriculum", self._get_degree_curriculum_node)
 
         # Set entry point to classification
         workflow.set_entry_point("classify_query")
@@ -123,6 +137,9 @@ class LangGraphAgentProvider(AgentProvider):
             self._route_initial,
             {
                 "search": "search_documents",
+                "student_schooling": "get_student_schooling",
+                "student_plan": "get_student_plan",
+                "degree_curriculum": "get_degree_curriculum",
                 "generate": "generate_answer"
             }
         )
@@ -139,6 +156,11 @@ class LangGraphAgentProvider(AgentProvider):
 
         # Connect web_search to generate_answer
         workflow.add_edge("web_search", "generate_answer")
+
+        # Connect academic nodes to generate_answer
+        workflow.add_edge("get_student_schooling", "generate_answer")
+        workflow.add_edge("get_student_plan", "generate_answer")
+        workflow.add_edge("get_degree_curriculum", "generate_answer")
 
         # Connect generate_answer to END
         workflow.add_edge("generate_answer", END)
@@ -265,17 +287,15 @@ class LangGraphAgentProvider(AgentProvider):
 
         # Conversational patterns (greetings, thanks, casual chat)
         conversational_patterns = [
-            # Greetings (English and Spanish)
+            # Greetings
             "hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening",
-            "hola", "buenos días", "buenas tardes", "buenas noches", "saludos", "qué tal",
             # Thanks
-            "thank", "thanks", "gracias", "appreciate", "thank you", "muchas gracias",
+            "thank", "thanks", "appreciate", "thank you",
             # Goodbyes
-            "bye", "goodbye", "see you", "adiós", "hasta luego", "chao",
+            "bye", "goodbye", "see you", "farewell",
             # Casual
-            "how are you", "what's up", "sup", "como estas", "cómo estás",
-            "who are you", "what can you do", "quién eres", "qué puedes hacer",
-            # Very short queries (likely conversational)
+            "how are you", "what's up", "sup",
+            "who are you", "what can you do"
         ]
 
         # Check if query matches conversational patterns
@@ -283,8 +303,7 @@ class LangGraphAgentProvider(AgentProvider):
 
         # Also check if query is very short (1-3 words) and doesn't contain question indicators
         words = query_lower.split()
-        question_indicators = ["what", "how", "why", "when", "where", "who", "which",
-                              "qué", "cómo", "por qué", "cuándo", "dónde", "quién", "cuál"]
+        question_indicators = ["what", "how", "why", "when", "where", "who", "which"]
         is_short_without_question = (
             len(words) <= 3 and
             not any(word in words for word in question_indicators)
@@ -294,7 +313,42 @@ class LangGraphAgentProvider(AgentProvider):
             logger.info(f"Conversational query detected - skipping tool execution: '{state['query']}'")
             return "generate"
 
-        logger.info(f"Informational query detected - proceeding with tool execution: '{state['query']}'")
+        # Academic query detection
+        # Student schooling queries (grades, GPA, completed courses)
+        schooling_keywords = [
+            "grade", "grades", "gpa", "average", "mark", "marks",
+            "score", "scores", "schooling", "academic record",
+            "transcript", "completed", "passed"
+        ]
+
+        # Student plan queries (future courses, study plan)
+        plan_keywords = [
+            "plan", "planning", "next semester", "future courses",
+            "what should i take", "career plan", "study plan"
+        ]
+
+        # Degree curriculum queries (curriculum, course structure)
+        curriculum_keywords = [
+            "curriculum", "course structure", "degree requirements",
+            "program", "what courses", "subjects in", "pending",
+            "remaining", "what's left", "need to take"
+        ]
+
+        # Check for academic query types (in priority order)
+        if any(keyword in query_lower for keyword in schooling_keywords):
+            logger.info(f"Student schooling query detected: '{state['query']}'")
+            return "student_schooling"
+
+        if any(keyword in query_lower for keyword in plan_keywords):
+            logger.info(f"Student plan query detected: '{state['query']}'")
+            return "student_plan"
+
+        if any(keyword in query_lower for keyword in curriculum_keywords):
+            logger.info(f"Degree curriculum query detected: '{state['query']}'")
+            return "degree_curriculum"
+
+        # Default to document search for other informational queries
+        logger.info(f"General informational query - using document search: '{state['query']}'")
         return "search"
 
     async def _search_documents_node(self, state: AgentState) -> Dict[str, Any]:
@@ -610,6 +664,260 @@ class LangGraphAgentProvider(AgentProvider):
                 "web_search_results": {"results": [], "result_count": 0, "error": str(e)}
             }
 
+    async def _get_student_schooling_node(self, state: AgentState) -> Dict[str, Any]:
+        """Get student's academic records via Agent API.
+
+        This node retrieves the student's grades, credits, and GPA for their degree program.
+        """
+        step_num = len(state["agent_steps"]) + 1
+
+        thinking_step = AgentStep(
+            step_number=step_num,
+            step_type="thought",
+            content="Retrieving student's academic records"
+        )
+
+        try:
+            # Extract student and degree info from user context
+            student_id = state["user"].auth0_id
+            # TODO: Extract degree_id from user profile or query - for now use default
+            degree_id = "default_degree"
+
+            # Execute get_student_schooling via Agent API
+            tool_call_result = await self.tool_executor.execute(
+                tool_name="get_student_schooling",
+                parameters={
+                    "student_id": student_id,
+                    "degree_id": degree_id
+                },
+                user=state["user"]
+            )
+
+            # Add tool execution step
+            tool_step = AgentStep(
+                step_number=step_num + 1,
+                step_type="tool_call",
+                content="Executing get_student_schooling",
+                tool_call=tool_call_result
+            )
+
+            # Extract results
+            if tool_call_result.error:
+                logger.warning(f"Get student schooling failed: {tool_call_result.error}")
+                result_step = AgentStep(
+                    step_number=step_num + 2,
+                    step_type="result",
+                    content=f"Failed to retrieve academic records: {tool_call_result.error}",
+                    tool_call=tool_call_result
+                )
+
+                return {
+                    "student_schooling": None,
+                    "agent_steps": [thinking_step, tool_step, result_step],
+                    "tools_executed": ["get_student_schooling"]
+                }
+
+            # Success
+            schooling_data = tool_call_result.result
+            record_count = len(schooling_data.get("schooling_records", []))
+            gpa = schooling_data.get("gpa", 0.0)
+
+            logger.info(f"Retrieved {record_count} schooling records, GPA: {gpa}")
+
+            result_step = AgentStep(
+                step_number=step_num + 2,
+                step_type="result",
+                content=f"Retrieved {record_count} academic records (GPA: {gpa})",
+                tool_call=tool_call_result
+            )
+
+            return {
+                "student_schooling": schooling_data,
+                "agent_steps": [thinking_step, tool_step, result_step],
+                "tools_executed": ["get_student_schooling"]
+            }
+
+        except Exception as e:
+            logger.error(f"Error in get_student_schooling_node: {e}")
+            error_step = AgentStep(
+                step_number=step_num,
+                step_type="error",
+                content=f"Failed to retrieve academic records: {str(e)}"
+            )
+            return {
+                "agent_steps": [thinking_step, error_step],
+                "error": str(e),
+                "student_schooling": None
+            }
+
+    async def _get_student_plan_node(self, state: AgentState) -> Dict[str, Any]:
+        """Get student's study plan via Agent API.
+
+        This node retrieves the student's planned courses and academic roadmap.
+        """
+        step_num = len(state["agent_steps"]) + 1
+
+        thinking_step = AgentStep(
+            step_number=step_num,
+            step_type="thought",
+            content="Retrieving student's study plan"
+        )
+
+        try:
+            # Extract student and degree info from user context
+            student_id = state["user"].auth0_id
+            # TODO: Extract degree_id from user profile or query - for now use default
+            degree_id = "default_degree"
+
+            # Execute get_student_plan via Agent API
+            tool_call_result = await self.tool_executor.execute(
+                tool_name="get_student_plan",
+                parameters={
+                    "student_id": student_id,
+                    "degree_id": degree_id
+                },
+                user=state["user"]
+            )
+
+            # Add tool execution step
+            tool_step = AgentStep(
+                step_number=step_num + 1,
+                step_type="tool_call",
+                content="Executing get_student_plan",
+                tool_call=tool_call_result
+            )
+
+            # Extract results
+            if tool_call_result.error:
+                logger.warning(f"Get student plan failed: {tool_call_result.error}")
+                result_step = AgentStep(
+                    step_number=step_num + 2,
+                    step_type="result",
+                    content=f"Failed to retrieve study plan: {tool_call_result.error}",
+                    tool_call=tool_call_result
+                )
+
+                return {
+                    "student_plan": None,
+                    "agent_steps": [thinking_step, tool_step, result_step],
+                    "tools_executed": ["get_student_plan"]
+                }
+
+            # Success
+            plan_data = tool_call_result.result
+            semester_count = len(plan_data.get("planned_semesters", []))
+
+            logger.info(f"Retrieved study plan with {semester_count} semesters")
+
+            result_step = AgentStep(
+                step_number=step_num + 2,
+                step_type="result",
+                content=f"Retrieved study plan with {semester_count} planned semesters",
+                tool_call=tool_call_result
+            )
+
+            return {
+                "student_plan": plan_data,
+                "agent_steps": [thinking_step, tool_step, result_step],
+                "tools_executed": ["get_student_plan"]
+            }
+
+        except Exception as e:
+            logger.error(f"Error in get_student_plan_node: {e}")
+            error_step = AgentStep(
+                step_number=step_num,
+                step_type="error",
+                content=f"Failed to retrieve study plan: {str(e)}"
+            )
+            return {
+                "agent_steps": [thinking_step, error_step],
+                "error": str(e),
+                "student_plan": None
+            }
+
+    async def _get_degree_curriculum_node(self, state: AgentState) -> Dict[str, Any]:
+        """Get degree curriculum via Agent API.
+
+        This node retrieves the official curriculum structure for a degree program.
+        """
+        step_num = len(state["agent_steps"]) + 1
+
+        thinking_step = AgentStep(
+            step_number=step_num,
+            step_type="thought",
+            content="Retrieving degree curriculum"
+        )
+
+        try:
+            # TODO: Extract degree_id from query or user profile - for now use default
+            degree_id = "default_degree"
+
+            # Execute get_degree_curriculum via Agent API
+            tool_call_result = await self.tool_executor.execute(
+                tool_name="get_degree_curriculum",
+                parameters={
+                    "degree_id": degree_id
+                },
+                user=state["user"]
+            )
+
+            # Add tool execution step
+            tool_step = AgentStep(
+                step_number=step_num + 1,
+                step_type="tool_call",
+                content="Executing get_degree_curriculum",
+                tool_call=tool_call_result
+            )
+
+            # Extract results
+            if tool_call_result.error:
+                logger.warning(f"Get degree curriculum failed: {tool_call_result.error}")
+                result_step = AgentStep(
+                    step_number=step_num + 2,
+                    step_type="result",
+                    content=f"Failed to retrieve curriculum: {tool_call_result.error}",
+                    tool_call=tool_call_result
+                )
+
+                return {
+                    "degree_curriculum": None,
+                    "agent_steps": [thinking_step, tool_step, result_step],
+                    "tools_executed": ["get_degree_curriculum"]
+                }
+
+            # Success
+            curriculum_data = tool_call_result.result
+            semester_count = len(curriculum_data.get("semesters", []))
+            total_credits = curriculum_data.get("total_credits", 0)
+
+            logger.info(f"Retrieved curriculum with {semester_count} semesters, {total_credits} total credits")
+
+            result_step = AgentStep(
+                step_number=step_num + 2,
+                step_type="result",
+                content=f"Retrieved curriculum with {semester_count} semesters ({total_credits} credits)",
+                tool_call=tool_call_result
+            )
+
+            return {
+                "degree_curriculum": curriculum_data,
+                "agent_steps": [thinking_step, tool_step, result_step],
+                "tools_executed": ["get_degree_curriculum"]
+            }
+
+        except Exception as e:
+            logger.error(f"Error in get_degree_curriculum_node: {e}")
+            error_step = AgentStep(
+                step_number=step_num,
+                step_type="error",
+                content=f"Failed to retrieve curriculum: {str(e)}"
+            )
+            return {
+                "agent_steps": [thinking_step, error_step],
+                "error": str(e),
+                "degree_curriculum": None
+            }
+
     def _extract_entries_by_year(self, content: str, year: str) -> List[Dict[str, str]]:
         """Extract all entries from file content that contain the specified year.
 
@@ -657,12 +965,72 @@ class LangGraphAgentProvider(AgentProvider):
 
         try:
             # Build context from tool results
-            # Priority: file_content > web_search_results > search_results
+            # Priority: academic_data > file_content > web_search_results > search_results
             context_parts = []
             enhanced_query = state["query"]
 
-            # Check for web search results first (most specific/timely)
-            if state.get("web_search_results") and state["web_search_results"].get("result_count", 0) > 0:
+            # Check for academic data first (most structured/relevant)
+            if state.get("student_schooling"):
+                schooling = state["student_schooling"]
+                context_parts.append("Student Academic Records:")
+                context_parts.append(f"Student ID: {schooling.get('student_id', 'N/A')}")
+                context_parts.append(f"Degree ID: {schooling.get('degree_id', 'N/A')}")
+                context_parts.append(f"GPA: {schooling.get('gpa', 0.0)}")
+                context_parts.append(f"Total Credits: {schooling.get('total_credits', 0)}")
+                context_parts.append("\nCourses:")
+                for record in schooling.get("schooling_records", []):
+                    context_parts.append(
+                        f"  - {record.get('subject_name')} ({record.get('subject_id')}): "
+                        f"Grade {record.get('grade')}, {record.get('credits')} credits, "
+                        f"{record.get('semester')}, Status: {record.get('status')}"
+                    )
+
+                enhanced_query = f"""The user asked: {state["query"]}
+
+I have retrieved the student's complete academic records including grades, GPA, and course history.
+Your task is to answer their question using this structured data in a clear, helpful format."""
+
+            elif state.get("student_plan"):
+                plan = state["student_plan"]
+                context_parts.append("Student Study Plan:")
+                context_parts.append(f"Student ID: {plan.get('student_id', 'N/A')}")
+                context_parts.append(f"Degree ID: {plan.get('degree_id', 'N/A')}")
+                context_parts.append("\nPlanned Semesters:")
+                for semester in plan.get("planned_semesters", []):
+                    context_parts.append(f"\n  Semester {semester.get('semester_id')}:")
+                    for course in semester.get("subjects", []):
+                        context_parts.append(
+                            f"    - {course.get('subject_name')} ({course.get('subject_id')}): "
+                            f"{course.get('credits')} credits"
+                        )
+
+                enhanced_query = f"""The user asked: {state["query"]}
+
+I have retrieved the student's study plan with all planned courses and semesters.
+Your task is to present this information in a clear, organized format."""
+
+            elif state.get("degree_curriculum"):
+                curriculum = state["degree_curriculum"]
+                context_parts.append("Degree Curriculum:")
+                context_parts.append(f"Degree: {curriculum.get('degree_name', 'N/A')}")
+                context_parts.append(f"Degree ID: {curriculum.get('degree_id', 'N/A')}")
+                context_parts.append(f"Total Credits: {curriculum.get('total_credits', 0)}")
+                context_parts.append("\nSemesters:")
+                for semester in curriculum.get("semesters", []):
+                    context_parts.append(f"\n  Semester {semester.get('semester_number')}:")
+                    for course in semester.get("subjects", []):
+                        context_parts.append(
+                            f"    - {course.get('subject_name')} ({course.get('subject_id')}): "
+                            f"{course.get('credits')} credits"
+                        )
+
+                enhanced_query = f"""The user asked: {state["query"]}
+
+I have retrieved the official degree curriculum structure.
+Your task is to present this information clearly and answer the user's specific question."""
+
+            # Check for web search results (most specific/timely)
+            elif state.get("web_search_results") and state["web_search_results"].get("result_count", 0) > 0:
                 web_results = state["web_search_results"]
                 context_parts.append("Web Search Results:")
                 for idx, result in enumerate(web_results.get("results", [])[:5], 1):

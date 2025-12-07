@@ -165,3 +165,122 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Health status")
     message: str = Field(..., description="Health message")
     version: str = Field(..., description="API version")
+
+
+# ============================================
+# University/Academic Tool Request Models
+# ============================================
+
+class GetUniversitySubjectsRequest(BaseModel):
+    """Request to get all university subjects."""
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class GetDegreeCurriculumRequest(BaseModel):
+    """Request to get suggested curriculum for a degree."""
+    degree_id: str = Field(..., description="Degree ID (e.g., 'ingenieria-sistemas')")
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class GetDegreeSubjectsRequest(BaseModel):
+    """Request to get subjects and prerequisites for a degree."""
+    degree_id: str = Field(..., description="Degree ID")
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class UploadStudentSchoolingRequest(BaseModel):
+    """Request to upload/update student schooling records."""
+    student_id: str = Field(..., description="Student ID")
+    schooling_data: Dict[str, Any] = Field(..., description="Schooling data (subjects, grades, dates)")
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class GetStudentSchoolingRequest(BaseModel):
+    """Request to get student's schooling records."""
+    student_id: str = Field(..., description="Student ID")
+    degree_id: str = Field(..., description="Degree ID")
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class GetStudentPlanRequest(BaseModel):
+    """Request to get student's career plan."""
+    student_id: str = Field(..., description="Student ID")
+    degree_id: str = Field(..., description="Degree ID")
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class UpdateStudentPlanRequest(BaseModel):
+    """Request to modify student's career plan."""
+    student_id: str = Field(..., description="Student ID")
+    degree_id: str = Field(..., description="Degree ID")
+    plan_data: Dict[str, Any] = Field(..., description="Updated plan data")
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+# ============================================
+# University/Academic Tool Response Models
+# ============================================
+
+class GetUniversitySubjectsResponse(BaseResponse):
+    """Response with all university subjects."""
+    subjects: List[Dict[str, Any]] = Field(default_factory=list, description="List of all subjects")
+    subject_count: int = Field(..., description="Total number of subjects")
+
+
+class GetDegreeCurriculumResponse(BaseResponse):
+    """Response with degree curriculum."""
+    degree_id: str = Field(..., description="Degree ID")
+    degree_name: str = Field(..., description="Degree name")
+    curriculum: List[Dict[str, Any]] = Field(default_factory=list, description="Suggested curriculum by semester")
+
+
+class GetDegreeSubjectsResponse(BaseResponse):
+    """Response with degree subjects and prerequisites."""
+    degree_id: str = Field(..., description="Degree ID")
+    degree_name: str = Field(..., description="Degree name")
+    subjects: List[Dict[str, Any]] = Field(default_factory=list, description="Subjects with prerequisites")
+    subject_count: int = Field(..., description="Number of subjects in degree")
+
+
+class UploadStudentSchoolingResponse(BaseResponse):
+    """Response after uploading student schooling."""
+    student_id: str = Field(..., description="Student ID")
+    records_updated: int = Field(..., description="Number of records updated")
+
+
+class GetStudentSchoolingResponse(BaseResponse):
+    """Response with student schooling records."""
+    student_id: str = Field(..., description="Student ID")
+    degree_id: str = Field(..., description="Degree ID")
+    schooling_records: List[Dict[str, Any]] = Field(default_factory=list, description="Student's completed subjects")
+    total_credits: int = Field(default=0, description="Total credits earned")
+    gpa: float = Field(default=0.0, description="Grade point average")
+
+
+class GetStudentPlanResponse(BaseResponse):
+    """Response with student's career plan."""
+    student_id: str = Field(..., description="Student ID")
+    degree_id: str = Field(..., description="Degree ID")
+    plan: List[Dict[str, Any]] = Field(default_factory=list, description="Planned subjects by semester")
+    total_semesters: int = Field(..., description="Total semesters in plan")
+
+
+class UpdateStudentPlanResponse(BaseResponse):
+    """Response after updating student plan."""
+    student_id: str = Field(..., description="Student ID")
+    degree_id: str = Field(..., description="Degree ID")
+    plan_updated: bool = Field(..., description="Whether plan was successfully updated")
