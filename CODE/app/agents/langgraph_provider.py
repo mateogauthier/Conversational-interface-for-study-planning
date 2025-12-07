@@ -100,21 +100,32 @@ class LangGraphAgentProvider(AgentProvider):
         """Build the agent workflow graph.
 
         Graph structure:
-        START -> search_documents -> route_after_search?
-                                   ├─> web_search -> generate_answer -> END
-                                   ├─> read_file -> generate_answer -> END
-                                   └─> generate -> generate_answer -> END
+        START -> classify_query -> route_initial?
+                                 ├─> search_documents -> route_after_search?
+                                 │                     ├─> web_search -> generate_answer -> END
+                                 │                     └─> generate_answer -> END (chunks found)
+                                 └─> generate_answer -> END (conversational queries)
         """
         workflow = StateGraph(AgentState)
 
         # Add nodes
+        workflow.add_node("classify_query", self._classify_query_node)
         workflow.add_node("search_documents", self._search_documents_node)
         workflow.add_node("web_search", self._web_search_node)
-        workflow.add_node("read_file_content", self._read_file_content_node)
         workflow.add_node("generate_answer", self._generate_answer_node)
 
-        # Set entry point
-        workflow.set_entry_point("search_documents")
+        # Set entry point to classification
+        workflow.set_entry_point("classify_query")
+
+        # Add initial routing after classification
+        workflow.add_conditional_edges(
+            "classify_query",
+            self._route_initial,
+            {
+                "search": "search_documents",
+                "generate": "generate_answer"
+            }
+        )
 
         # Add conditional routing after document search
         workflow.add_conditional_edges(
@@ -122,14 +133,12 @@ class LangGraphAgentProvider(AgentProvider):
             self._route_after_search,
             {
                 "web_search": "web_search",
-                "read_file": "read_file_content",
                 "generate": "generate_answer"
             }
         )
 
-        # Connect web_search and read_file to generate_answer
+        # Connect web_search to generate_answer
         workflow.add_edge("web_search", "generate_answer")
-        workflow.add_edge("read_file_content", "generate_answer")
 
         # Connect generate_answer to END
         workflow.add_edge("generate_answer", END)
@@ -223,6 +232,71 @@ class LangGraphAgentProvider(AgentProvider):
             logger.error(f"Error in LangGraph agent execution: {e}", exc_info=True)
             raise
 
+    async def _classify_query_node(self, state: AgentState) -> Dict[str, Any]:
+        """Classify the query to determine if tools are needed.
+
+        This node detects conversational queries (greetings, thanks, casual chat)
+        and skips tool execution entirely for better UX and performance.
+        """
+        step_num = len(state["agent_steps"]) + 1
+
+        # Add classification step
+        classification_step = AgentStep(
+            step_number=step_num,
+            step_type="thought",
+            content="Analyzing query type to determine appropriate response strategy"
+        )
+
+        return {
+            "agent_steps": [classification_step],
+            "iteration": state["iteration"] + 1
+        }
+
+    def _route_initial(self, state: AgentState) -> str:
+        """Route query based on classification.
+
+        Conversational queries (greetings, thanks, casual chat) skip tools entirely.
+        Informational queries proceed to search.
+
+        Returns:
+            "generate" for conversational queries, "search" for informational queries
+        """
+        query_lower = state["query"].lower().strip()
+
+        # Conversational patterns (greetings, thanks, casual chat)
+        conversational_patterns = [
+            # Greetings (English and Spanish)
+            "hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening",
+            "hola", "buenos días", "buenas tardes", "buenas noches", "saludos", "qué tal",
+            # Thanks
+            "thank", "thanks", "gracias", "appreciate", "thank you", "muchas gracias",
+            # Goodbyes
+            "bye", "goodbye", "see you", "adiós", "hasta luego", "chao",
+            # Casual
+            "how are you", "what's up", "sup", "como estas", "cómo estás",
+            "who are you", "what can you do", "quién eres", "qué puedes hacer",
+            # Very short queries (likely conversational)
+        ]
+
+        # Check if query matches conversational patterns
+        is_conversational = any(pattern in query_lower for pattern in conversational_patterns)
+
+        # Also check if query is very short (1-3 words) and doesn't contain question indicators
+        words = query_lower.split()
+        question_indicators = ["what", "how", "why", "when", "where", "who", "which",
+                              "qué", "cómo", "por qué", "cuándo", "dónde", "quién", "cuál"]
+        is_short_without_question = (
+            len(words) <= 3 and
+            not any(word in words for word in question_indicators)
+        )
+
+        if is_conversational or is_short_without_question:
+            logger.info(f"Conversational query detected - skipping tool execution: '{state['query']}'")
+            return "generate"
+
+        logger.info(f"Informational query detected - proceeding with tool execution: '{state['query']}'")
+        return "search"
+
     async def _search_documents_node(self, state: AgentState) -> Dict[str, Any]:
         """Search for relevant documents.
 
@@ -288,15 +362,14 @@ class LangGraphAgentProvider(AgentProvider):
             }
 
     def _route_after_search(self, state: AgentState) -> str:
-        """Determine next step after initial search: web_search, read_file, or generate.
+        """Determine next step after initial search: web_search or generate.
 
         Intelligent routing based on query type and search results.
 
         Decision logic:
         1. Check if query explicitly needs web search (weather, news, current events, etc.)
-        2. If document search found results -> decide if we need complete file
+        2. If document search found results -> generate answer with chunks (don't read full files)
         3. If NO documents found -> fallback to web search to try answering
-        4. Otherwise -> generate with what we have
         """
         query_lower = state["query"].lower()
 
@@ -329,11 +402,9 @@ class LangGraphAgentProvider(AgentProvider):
         # Check document search results
         search_results = state.get("search_results")
         if search_results and search_results.get("n_chunks_found", 0) > 0:
-            # Found documents - decide if we need complete file
-            chunks = search_results.get("relevant_chunks", [])
-            if chunks:
-                logger.info(f"Found {len(chunks)} document chunks - will read complete file")
-                return "read_file"
+            # Found relevant document chunks - use them directly (no need to read full file)
+            logger.info(f"Found {search_results.get('n_chunks_found', 0)} document chunks - generating answer")
+            return "generate"
 
         # NO documents found - fallback to web search
         # This allows the agent to try finding information on the web when documents don't have it
