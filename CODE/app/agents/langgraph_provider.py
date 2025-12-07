@@ -274,7 +274,52 @@ class LangGraphAgentProvider(AgentProvider):
             "iteration": state["iteration"] + 1
         }
 
-    def _route_initial(self, state: AgentState) -> str:
+    async def _detect_academic_intent(self, query: str) -> str:
+        """Detect academic intent using LLM classification.
+
+        This enables language-agnostic intent detection - works in any language.
+
+        Args:
+            query: User's query in any language
+
+        Returns:
+            One of: "student_schooling", "student_plan", "degree_curriculum", "none"
+        """
+        intent_prompt = f"""Classify this query into ONE of these categories:
+
+1. "student_schooling" - Asking about grades, GPA, academic record, scores, completed courses, transcript
+2. "student_plan" - Asking about study plan, future courses, what to take next semester, career planning
+3. "degree_curriculum" - Asking about degree requirements, curriculum structure, what courses are in the program, courses needed to graduate
+4. "none" - None of the above (general questions, other topics)
+
+Query: "{query}"
+
+Respond with ONLY the category name, nothing else."""
+
+        try:
+            # Use LLM to classify intent (using smallest/fastest model)
+            response = await self.llm_service.generate_response(
+                prompt=intent_prompt,
+                model=None  # Use default model
+            )
+
+            intent = response.get("response", "none").strip().lower()
+
+            # Validate response
+            valid_intents = ["student_schooling", "student_plan", "degree_curriculum", "none"]
+            if intent not in valid_intents:
+                logger.warning(f"Invalid intent detected: '{intent}', defaulting to 'none'")
+                return "none"
+
+            logger.info(f"LLM intent classification: '{query}' → {intent}")
+            return intent
+
+        except Exception as e:
+            logger.error(f"Error in LLM intent detection: {e}")
+            # Fallback to "none" on error
+            return "none"
+
+    async def _route_initial(self, state: AgentState) -> str:
         """Route query based on classification.
 
         Conversational queries (greetings, thanks, casual chat) skip tools entirely.
@@ -313,37 +358,19 @@ class LangGraphAgentProvider(AgentProvider):
             logger.info(f"Conversational query detected - skipping tool execution: '{state['query']}'")
             return "generate"
 
-        # Academic query detection
-        # Student schooling queries (grades, GPA, completed courses)
-        schooling_keywords = [
-            "grade", "grades", "gpa", "average", "mark", "marks",
-            "score", "scores", "schooling", "academic record",
-            "transcript", "completed", "passed"
-        ]
+        # Academic query detection using LLM-based intent classification
+        # This allows language-agnostic detection (works in any language)
+        academic_intent = await self._detect_academic_intent(state["query"])
 
-        # Student plan queries (future courses, study plan)
-        plan_keywords = [
-            "plan", "planning", "next semester", "future courses",
-            "what should i take", "career plan", "study plan"
-        ]
-
-        # Degree curriculum queries (curriculum, course structure)
-        curriculum_keywords = [
-            "curriculum", "course structure", "degree requirements",
-            "program", "what courses", "subjects in", "pending",
-            "remaining", "what's left", "need to take"
-        ]
-
-        # Check for academic query types (in priority order)
-        if any(keyword in query_lower for keyword in schooling_keywords):
+        if academic_intent == "student_schooling":
             logger.info(f"Student schooling query detected: '{state['query']}'")
             return "student_schooling"
 
-        if any(keyword in query_lower for keyword in plan_keywords):
+        if academic_intent == "student_plan":
             logger.info(f"Student plan query detected: '{state['query']}'")
             return "student_plan"
 
-        if any(keyword in query_lower for keyword in curriculum_keywords):
+        if academic_intent == "degree_curriculum":
             logger.info(f"Degree curriculum query detected: '{state['query']}'")
             return "degree_curriculum"
 
