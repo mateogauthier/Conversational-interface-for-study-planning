@@ -59,13 +59,15 @@ function Header() {
             <FolderOpen size={18} />
             <span>{t('nav.files')}</span>
           </NavLink>
-          <NavLink
-            to="/courses"
-            className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
-          >
-            <BookOpen size={18} />
-            <span>{t('nav.courses')}</span>
-          </NavLink>
+          {!isAdmin && (
+            <NavLink
+              to="/courses"
+              className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <BookOpen size={18} />
+              <span>{t('nav.courses')}</span>
+            </NavLink>
+          )}
           {isAdmin && (
             <NavLink
               to="/admin/feedback"
@@ -152,14 +154,16 @@ function Header() {
                 <FolderOpen size={20} />
                 <span>{t('nav.files')}</span>
               </NavLink>
-              <NavLink
-                to="/courses"
-                className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
-                onClick={closeMobileMenu}
-              >
-                <BookOpen size={20} />
-                <span>{t('nav.courses')}</span>
-              </NavLink>
+              {!isAdmin && (
+                <NavLink
+                  to="/courses"
+                  className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+                  onClick={closeMobileMenu}
+                >
+                  <BookOpen size={20} />
+                  <span>{t('nav.courses')}</span>
+                </NavLink>
+              )}
               {isAdmin && (
                 <>
                   <NavLink
