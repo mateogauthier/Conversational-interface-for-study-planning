@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, FolderOpen, Settings, LogOut, User, Menu, X, MessageSquare, BarChart3 } from 'lucide-react';
+import { Home, FolderOpen, BookOpen, Settings, LogOut, User, Menu, X, MessageSquare, BarChart3 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import './Header.css';
@@ -58,6 +58,13 @@ function Header() {
           >
             <FolderOpen size={18} />
             <span>{t('nav.files')}</span>
+          </NavLink>
+          <NavLink
+            to="/courses"
+            className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
+          >
+            <BookOpen size={18} />
+            <span>{t('nav.courses')}</span>
           </NavLink>
           {isAdmin && (
             <NavLink
@@ -144,6 +151,14 @@ function Header() {
               >
                 <FolderOpen size={20} />
                 <span>{t('nav.files')}</span>
+              </NavLink>
+              <NavLink
+                to="/courses"
+                className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+                onClick={closeMobileMenu}
+              >
+                <BookOpen size={20} />
+                <span>{t('nav.courses')}</span>
               </NavLink>
               {isAdmin && (
                 <>

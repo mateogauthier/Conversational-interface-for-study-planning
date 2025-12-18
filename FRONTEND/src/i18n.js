@@ -11,6 +11,7 @@ const resources = {
       nav: {
         home: 'Home',
         files: 'Files',
+        courses: 'Courses',
         settings: 'Settings',
         feedback: 'Feedback',
         stats: 'Stats',
@@ -227,6 +228,36 @@ const resources = {
         filesReferenced: 'Files Referenced',
         messageId: 'Message ID',
         conversation: 'Conversation'
+      },
+
+      // Courses Page
+      courses: {
+        title: 'My Courses',
+        loading: 'Loading courses...',
+        errorLoadingDegrees: 'Failed to load degrees. Please try again.',
+        errorLoadingData: 'Failed to load course data. Please try again.',
+        noDegrees: 'No Degrees Available',
+        noDegreesHint: 'Contact your administrator to enroll in a degree program.',
+        myProgress: 'My Progress',
+        curriculum: 'Curriculum',
+        studyPlan: 'Study Plan',
+        semester: 'Semester',
+        credits: 'credits',
+        totalCredits: 'total credits',
+        grade: 'Grade',
+        prerequisites: 'Prerequisites',
+        completed: 'Completed',
+        inProgress: 'In Progress',
+        locked: 'Locked',
+        available: 'Available',
+        completedSubjects: 'Completed Subjects',
+        currentSubjects: 'Current Subjects',
+        creditsEarned: 'Credits Earned',
+        gpa: 'GPA',
+        noProgressData: 'No progress data available yet.',
+        noCurriculumData: 'No curriculum information available.',
+        noPlanData: 'No study plan created yet.',
+        createPlanHint: 'You can create a personalized study plan based on your progress.'
       }
     }
   },
@@ -239,6 +270,7 @@ const resources = {
       nav: {
         home: 'Inicio',
         files: 'Archivos',
+        courses: 'Cursos',
         settings: 'Configuración',
         feedback: 'Comentarios',
         stats: 'Estadísticas',
@@ -455,6 +487,36 @@ const resources = {
         filesReferenced: 'Archivos Referenciados',
         messageId: 'ID de Mensaje',
         conversation: 'Conversación'
+      },
+
+      // Courses Page
+      courses: {
+        title: 'Mis Cursos',
+        loading: 'Cargando cursos...',
+        errorLoadingDegrees: 'Error al cargar carreras. Por favor intenta de nuevo.',
+        errorLoadingData: 'Error al cargar datos del curso. Por favor intenta de nuevo.',
+        noDegrees: 'No Hay Carreras Disponibles',
+        noDegreesHint: 'Contacta a tu administrador para inscribirte en una carrera.',
+        myProgress: 'Mi Progreso',
+        curriculum: 'Currícula',
+        studyPlan: 'Plan de Estudios',
+        semester: 'Semestre',
+        credits: 'créditos',
+        totalCredits: 'créditos totales',
+        grade: 'Nota',
+        prerequisites: 'Prerrequisitos',
+        completed: 'Completado',
+        inProgress: 'En Progreso',
+        locked: 'Bloqueado',
+        available: 'Disponible',
+        completedSubjects: 'Materias Completadas',
+        currentSubjects: 'Materias Actuales',
+        creditsEarned: 'Créditos Obtenidos',
+        gpa: 'Promedio',
+        noProgressData: 'Aún no hay datos de progreso disponibles.',
+        noCurriculumData: 'No hay información de currícula disponible.',
+        noPlanData: 'Aún no se ha creado un plan de estudios.',
+        createPlanHint: 'Puedes crear un plan de estudios personalizado basado en tu progreso.'
       }
     }
   }

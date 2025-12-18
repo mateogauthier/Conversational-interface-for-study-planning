@@ -332,4 +332,61 @@ export const agentApi = {
   },
 };
 
+// Academic API
+export const academicApi = {
+  // Get all degrees
+  getDegrees: async () => {
+    const response = await api.get('/academic/degrees');
+    return response.data;
+  },
+
+  // Get specific degree
+  getDegree: async (degreeId) => {
+    const response = await api.get(`/academic/degrees/${degreeId}`);
+    return response.data;
+  },
+
+  // Get degree curriculum
+  getCurriculum: async (degreeId) => {
+    const response = await api.get(`/academic/degrees/${degreeId}/curriculum`);
+    return response.data;
+  },
+
+  // Get all subjects
+  getAllSubjects: async () => {
+    const response = await api.get('/academic/subjects');
+    return response.data;
+  },
+
+  // Get subjects for a specific degree
+  getDegreeSubjects: async (degreeId) => {
+    const response = await api.get(`/academic/degrees/${degreeId}/subjects`);
+    return response.data;
+  },
+
+  // Get student's transcript
+  getMySchooling: async (degreeId) => {
+    const response = await api.get(`/academic/students/me/schooling/${degreeId}`);
+    return response.data;
+  },
+
+  // Upload schooling data
+  uploadSchooling: async (degreeId, subjects) => {
+    const response = await api.post(`/academic/students/me/schooling/${degreeId}/upload`, subjects);
+    return response.data;
+  },
+
+  // Get student's study plan
+  getMyPlan: async (degreeId) => {
+    const response = await api.get(`/academic/students/me/plan/${degreeId}`);
+    return response.data;
+  },
+
+  // Update student's study plan
+  updateMyPlan: async (degreeId, planData) => {
+    const response = await api.patch(`/academic/students/me/plan/${degreeId}`, planData);
+    return response.data;
+  },
+};
+
 export default api;

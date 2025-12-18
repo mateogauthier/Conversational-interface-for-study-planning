@@ -498,6 +498,311 @@ class AgentToolService:
             logger.error(f"Error in web_search: {e}")
             raise
 
+    # ============================================
+    # Academic/University Tool Methods
+    # ============================================
+
+    async def get_university_subjects(
+        self,
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Get all university subjects via main API.
+
+        Args:
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with subjects list
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.get(
+                "/academic/subjects",
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            subjects = response.json()
+
+            return {
+                "subjects": subjects,
+                "subject_count": len(subjects)
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in get_university_subjects: {e.response.status_code}")
+            raise ValueError(f"Get subjects failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in get_university_subjects: {e}")
+            raise
+
+    async def get_degree_curriculum(
+        self,
+        degree_id: str,
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Get degree curriculum via main API.
+
+        Args:
+            degree_id: Degree ID
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with curriculum
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.get(
+                f"/academic/degrees/{degree_id}/curriculum",
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            return {
+                "degree_id": data["degree_id"],
+                "degree_name": data["degree_name"],
+                "curriculum": data["curriculum"]
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in get_degree_curriculum: {e.response.status_code}")
+            raise ValueError(f"Get curriculum failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in get_degree_curriculum: {e}")
+            raise
+
+    async def get_degree_subjects(
+        self,
+        degree_id: str,
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Get subjects for a specific degree via main API.
+
+        Args:
+            degree_id: Degree ID
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with subjects list
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.get(
+                f"/academic/degrees/{degree_id}/subjects",
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            subjects = response.json()
+
+            # Get degree info
+            degree_response = await self.http_client.get(
+                f"/academic/degrees/{degree_id}",
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+            degree_response.raise_for_status()
+            degree_data = degree_response.json()
+
+            return {
+                "degree_id": degree_id,
+                "degree_name": degree_data.get("degree_name", "Unknown"),
+                "subjects": subjects,
+                "subject_count": len(subjects)
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in get_degree_subjects: {e.response.status_code}")
+            raise ValueError(f"Get degree subjects failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in get_degree_subjects: {e}")
+            raise
+
+    async def upload_student_schooling(
+        self,
+        degree_id: str,
+        schooling_data: List[Dict[str, Any]],
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Upload student schooling records via main API.
+
+        Args:
+            degree_id: Degree ID
+            schooling_data: List of completed subjects
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with upload result
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.post(
+                f"/academic/students/me/schooling/{degree_id}/upload",
+                json=schooling_data,
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            result = response.json()
+
+            return {
+                "student_id": result.get("student_id"),
+                "records_updated": len(schooling_data)
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in upload_student_schooling: {e.response.status_code}")
+            raise ValueError(f"Upload schooling failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in upload_student_schooling: {e}")
+            raise
+
+    async def get_student_schooling(
+        self,
+        degree_id: str,
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Get student schooling records via main API.
+
+        Args:
+            degree_id: Degree ID
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with schooling records
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.get(
+                f"/academic/students/me/schooling/{degree_id}",
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            schooling = response.json()
+
+            return {
+                "student_id": schooling["student_id"],
+                "degree_id": schooling["degree_id"],
+                "schooling_records": schooling["completed_subjects"],
+                "total_credits": schooling["total_credits_earned"],
+                "gpa": schooling["gpa"]
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in get_student_schooling: {e.response.status_code}")
+            raise ValueError(f"Get schooling failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in get_student_schooling: {e}")
+            raise
+
+    async def get_student_plan(
+        self,
+        degree_id: str,
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Get student career plan via main API.
+
+        Args:
+            degree_id: Degree ID
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with career plan
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.get(
+                f"/academic/students/me/plan/{degree_id}",
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            plan = response.json()
+
+            return {
+                "student_id": plan["student_id"],
+                "degree_id": plan["degree_id"],
+                "plan": plan["semester_plans"],
+                "total_semesters": len(plan["semester_plans"])
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in get_student_plan: {e.response.status_code}")
+            raise ValueError(f"Get plan failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in get_student_plan: {e}")
+            raise
+
+    async def update_student_plan(
+        self,
+        degree_id: str,
+        plan_data: Dict[str, Any],
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Update student career plan via main API.
+
+        Args:
+            degree_id: Degree ID
+            plan_data: Updated plan data
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with update result
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.patch(
+                f"/academic/students/me/plan/{degree_id}",
+                json=plan_data,
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            result = response.json()
+
+            return {
+                "student_id": result.get("student_id"),
+                "degree_id": result.get("degree_id"),
+                "plan_updated": result.get("success", True)
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in update_student_plan: {e.response.status_code}")
+            raise ValueError(f"Update plan failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in update_student_plan: {e}")
+            raise
+
 
 # Global service instance
 agent_tool_service = AgentToolService()

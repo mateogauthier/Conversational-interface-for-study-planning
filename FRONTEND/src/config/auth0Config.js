@@ -19,9 +19,9 @@ export const auth0Config = {
     audience: import.meta.env.VITE_AUTH0_AUDIENCE,
     scope: 'openid profile email'
   },
-  // Use memory cache for HTTP (DEVELOPMENT ONLY - INSECURE!)
-  cacheLocation: 'memory',
-  useRefreshTokens: false
+  // Use localStorage to persist tokens across page refreshes
+  cacheLocation: 'localstorage',
+  useRefreshTokens: true
 };
 
 // Debug: Log final config
