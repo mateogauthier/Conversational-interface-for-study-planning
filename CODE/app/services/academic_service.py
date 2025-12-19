@@ -211,13 +211,57 @@ class AcademicService:
             })
         return schooling
 
+    async def get_student_degrees(self, student_id: str) -> List[str]:
+        """Get all degree IDs the student is enrolled in."""
+        cursor = self.student_schooling_collection.find(
+            {"student_id": student_id},
+            {"degree_id": 1}
+        )
+        degree_ids = []
+        async for doc in cursor:
+            degree_ids.append(doc["degree_id"])
+        return degree_ids
+
+    async def get_or_infer_student_degree(self, student_id: str) -> Optional[str]:
+        """
+        Get the student's degree ID, or infer it intelligently.
+
+        Strategy:
+        1. Check if student has any schooling records - use the first one
+        2. If no schooling records, check available degrees and return the first one
+        3. If no degrees exist, return None
+        """
+        # Try to get student's enrolled degrees
+        enrolled_degrees = await self.get_student_degrees(student_id)
+
+        if enrolled_degrees:
+            # Student has at least one degree - use the first one
+            logger.info(f"Found {len(enrolled_degrees)} degree(s) for student {student_id}: {enrolled_degrees}")
+            return enrolled_degrees[0]
+
+        # No schooling records - check if any degrees exist in the system
+        degrees = await self.list_degrees()
+        if degrees:
+            # Return the first available degree
+            default_degree_id = degrees[0].degree_id
+            logger.info(f"No enrollment found for student {student_id}, using first available degree: {default_degree_id}")
+            return default_degree_id
+
+        # No degrees at all
+        logger.warning(f"No degrees found in the system for student {student_id}")
+        return None
+
     async def add_completed_subject(
         self,
         student_id: str,
         degree_id: str,
         subject_record: Dict[str, Any]
     ) -> Optional[StudentSchoolingInDB]:
-        """Add a completed subject to student's transcript."""
+        """Add a completed subject to student's transcript.
+
+        Also removes the subject from in_progress_subjects if it exists there,
+        to maintain data consistency.
+        """
         # Validate subject exists in degree
         subject = await self.get_subject(degree_id, subject_record["subject_id"])
         if not subject:
@@ -227,10 +271,13 @@ class AcademicService:
         # Create subject record
         record = StudentSubjectRecord(**subject_record)
 
-        # Update schooling record
+        # Update schooling record:
+        # 1. Remove from in_progress_subjects (if present)
+        # 2. Add to completed_subjects
         result = await self.student_schooling_collection.update_one(
             {"student_id": student_id, "degree_id": degree_id},
             {
+                "$pull": {"in_progress_subjects": {"subject_id": record.subject_id}},
                 "$push": {"completed_subjects": record.model_dump()},
                 "$set": {"updated_at": datetime.utcnow()}
             }
@@ -314,6 +361,67 @@ class AcademicService:
             await self._recalculate_student_stats(student_id, degree_id)
 
         return await self.get_student_schooling(student_id, degree_id)
+
+    async def add_in_progress_subject(
+        self,
+        student_id: str,
+        degree_id: str,
+        subject_record: Dict[str, Any]
+    ) -> Optional[StudentSchoolingInDB]:
+        """Add a subject to student's in-progress list."""
+        # Create subject record
+        record = StudentSubjectRecord(**subject_record)
+
+        # Update schooling record
+        result = await self.student_schooling_collection.update_one(
+            {"student_id": student_id, "degree_id": degree_id},
+            {
+                "$push": {"in_progress_subjects": record.model_dump()},
+                "$set": {"updated_at": datetime.utcnow()}
+            }
+        )
+
+        if result.matched_count == 0:
+            return None
+
+        return await self.get_student_schooling(student_id, degree_id)
+
+    async def remove_subject(
+        self,
+        student_id: str,
+        degree_id: str,
+        subject_id: str
+    ) -> Optional[StudentSchoolingInDB]:
+        """Remove a subject from both completed and in-progress lists."""
+        # Remove from both arrays
+        result = await self.student_schooling_collection.update_one(
+            {"student_id": student_id, "degree_id": degree_id},
+            {
+                "$pull": {
+                    "completed_subjects": {"subject_id": subject_id},
+                    "in_progress_subjects": {"subject_id": subject_id}
+                },
+                "$set": {"updated_at": datetime.utcnow()}
+            }
+        )
+
+        if result.matched_count == 0:
+            return None
+
+        # Recalculate statistics after removal
+        await self._recalculate_student_stats(student_id, degree_id)
+
+        return await self.get_student_schooling(student_id, degree_id)
+
+    async def get_degree_subject(self, degree_id: str, subject_id: str) -> Optional[DegreeSubjectInDB]:
+        """Get a specific subject from a degree."""
+        subject_doc = await self.degree_subjects_collection.find_one({
+            "degree_id": degree_id,
+            "subject_id": subject_id
+        })
+        if not subject_doc:
+            return None
+        return DegreeSubjectInDB(**subject_doc)
 
     async def _recalculate_student_stats(self, student_id: str, degree_id: str) -> None:
         """Recalculate GPA and credit totals for a student."""

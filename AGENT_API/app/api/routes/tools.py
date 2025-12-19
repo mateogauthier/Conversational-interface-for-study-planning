@@ -18,6 +18,7 @@ from app.models.schemas import (
     GetDegreeCurriculumRequest, GetDegreeCurriculumResponse,
     GetDegreeSubjectsRequest, GetDegreeSubjectsResponse,
     UploadStudentSchoolingRequest, UploadStudentSchoolingResponse,
+    GetStudentDegreeRequest, GetStudentDegreeResponse,
     GetStudentSchoolingRequest, GetStudentSchoolingResponse,
     GetStudentPlanRequest, GetStudentPlanResponse,
     UpdateStudentPlanRequest, UpdateStudentPlanResponse
@@ -306,6 +307,26 @@ async def upload_student_schooling(request: UploadStudentSchoolingRequest):
 
     except Exception as e:
         logger.error(f"Upload student schooling error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/get_student_degree", response_model=GetStudentDegreeResponse)
+async def get_student_degree(request: GetStudentDegreeRequest):
+    """Get student's enrolled degree ID (or inferred degree)."""
+    try:
+        result = await agent_tool_service.get_student_degree(
+            user_auth0_id=request.user_auth0_id,
+            user_role=request.user_role
+        )
+
+        return GetStudentDegreeResponse(
+            success=True,
+            message="Student degree retrieved successfully",
+            degree_id=result["degree_id"]
+        )
+
+    except Exception as e:
+        logger.error(f"Get student degree error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

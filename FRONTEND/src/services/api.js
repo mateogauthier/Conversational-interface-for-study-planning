@@ -387,6 +387,35 @@ export const academicApi = {
     const response = await api.patch(`/academic/students/me/plan/${degreeId}`, planData);
     return response.data;
   },
+
+  // Enroll in a degree
+  enrollInDegree: async (degreeId) => {
+    const response = await api.post(`/academic/students/me/enroll/${degreeId}`);
+    return response.data;
+  },
+
+  // Add or update a subject grade
+  updateSubjectGrade: async (degreeId, subjectId, grade, semester) => {
+    const response = await api.post(`/academic/students/me/schooling/${degreeId}/subjects/${subjectId}`, {
+      grade,
+      semester
+    });
+    return response.data;
+  },
+
+  // Enroll in a subject (mark as in-progress)
+  enrollInSubject: async (degreeId, subjectId, semester) => {
+    const response = await api.post(`/academic/students/me/schooling/${degreeId}/subjects/${subjectId}/enroll`, {
+      semester
+    });
+    return response.data;
+  },
+
+  // Remove a subject from record
+  removeSubject: async (degreeId, subjectId) => {
+    const response = await api.delete(`/academic/students/me/schooling/${degreeId}/subjects/${subjectId}`);
+    return response.data;
+  },
 };
 
 export default api;

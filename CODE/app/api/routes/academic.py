@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
@@ -230,6 +230,27 @@ async def list_degree_subjects(
 # Student Schooling (Transcript) Endpoints
 # ============================================
 
+@router.get("/students/me/degree")
+async def get_my_degree(
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Get current user's degree ID (enrolled or inferred)."""
+    try:
+        academic_service = get_academic_service()
+        degree_id = await academic_service.get_or_infer_student_degree(current_user.auth0_id)
+
+        if not degree_id:
+            raise HTTPException(status_code=404, detail="No degrees available in the system")
+
+        return {"degree_id": degree_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting student degree: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/students/me/schooling/{degree_id}", response_model=StudentSchoolingResponse)
 async def get_my_schooling(
     degree_id: str,
@@ -321,6 +342,205 @@ async def upload_my_schooling(
         raise
     except Exception as e:
         logger.error(f"Error uploading schooling: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/students/me/enroll/{degree_id}")
+async def enroll_in_degree(
+    degree_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Enroll current user in a degree program."""
+    try:
+        academic_service = get_academic_service()
+
+        # Verify degree exists
+        degree = await academic_service.get_degree(degree_id)
+        if not degree:
+            raise HTTPException(status_code=404, detail=f"Degree {degree_id} not found")
+
+        # Create schooling record (enrollment)
+        schooling = await academic_service.get_or_create_student_schooling(
+            student_id=current_user.auth0_id,
+            degree_id=degree_id,
+            user_id=str(current_user.id)
+        )
+
+        return {
+            "success": True,
+            "message": f"Successfully enrolled in {degree.degree_name}",
+            "degree_id": degree_id,
+            "degree_name": degree.degree_name,
+            "enrollment_date": schooling.enrollment_date.isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error enrolling in degree: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UpdateGradeRequest(BaseModel):
+    grade: float = Field(..., ge=0, le=100, description="Grade from 0 to 100")
+    semester: str = Field(..., description="Semester taken (e.g., '2024-1')")
+
+
+@router.post("/students/me/schooling/{degree_id}/subjects/{subject_id}")
+async def update_subject_grade(
+    degree_id: str,
+    subject_id: str,
+    data: UpdateGradeRequest,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Add or update a completed subject grade."""
+    try:
+        academic_service = get_academic_service()
+
+        # Verify degree and subject exist
+        degree = await academic_service.get_degree(degree_id)
+        if not degree:
+            raise HTTPException(status_code=404, detail=f"Degree {degree_id} not found")
+
+        # Get subject info
+        subject = await academic_service.get_degree_subject(degree_id, subject_id)
+        if not subject:
+            raise HTTPException(status_code=404, detail=f"Subject {subject_id} not found in degree {degree_id}")
+
+        # Determine pass/fail status (70% to pass)
+        status = "Passed" if data.grade >= 70 else "Failed"
+
+        # Calculate letter grade
+        if data.grade >= 90:
+            letter_grade = "A"
+        elif data.grade >= 80:
+            letter_grade = "B"
+        elif data.grade >= 70:
+            letter_grade = "C"
+        elif data.grade >= 60:
+            letter_grade = "D"
+        else:
+            letter_grade = "F"
+
+        # Add subject record
+        subject_record = {
+            "subject_id": subject_id,
+            "subject_name": subject.name,
+            "credits": subject.credits,
+            "grade": data.grade,
+            "letter_grade": letter_grade,
+            "status": status,
+            "semester": data.semester,
+            "attempt_number": 1
+        }
+
+        schooling = await academic_service.add_completed_subject(
+            student_id=current_user.auth0_id,
+            degree_id=degree_id,
+            subject_record=subject_record
+        )
+
+        if not schooling:
+            raise HTTPException(status_code=404, detail="Student schooling record not found")
+
+        return {
+            "success": True,
+            "message": f"Subject {subject_id} updated with grade {data.grade}",
+            "subject_id": subject_id,
+            "grade": data.grade,
+            "letter_grade": letter_grade,
+            "status": status,
+            "gpa": schooling.gpa,
+            "total_credits_earned": schooling.total_credits_earned
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating subject grade: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class EnrollSubjectRequest(BaseModel):
+    semester: str = Field(..., description="Current semester (e.g., '2024-2')")
+
+
+@router.post("/students/me/schooling/{degree_id}/subjects/{subject_id}/enroll")
+async def enroll_in_subject(
+    degree_id: str,
+    subject_id: str,
+    data: EnrollSubjectRequest,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Enroll in a subject (mark as in-progress)."""
+    try:
+        academic_service = get_academic_service()
+
+        # Verify subject exists
+        subject = await academic_service.get_degree_subject(degree_id, subject_id)
+        if not subject:
+            raise HTTPException(status_code=404, detail=f"Subject {subject_id} not found")
+
+        # Add to in-progress subjects
+        subject_record = {
+            "subject_id": subject_id,
+            "subject_name": subject.name,
+            "credits": subject.credits,
+            "status": "In Progress",
+            "semester": data.semester
+        }
+
+        schooling = await academic_service.add_in_progress_subject(
+            student_id=current_user.auth0_id,
+            degree_id=degree_id,
+            subject_record=subject_record
+        )
+
+        if not schooling:
+            raise HTTPException(status_code=404, detail="Student schooling record not found")
+
+        return {
+            "success": True,
+            "message": f"Enrolled in {subject.name} for semester {data.semester}",
+            "subject_id": subject_id,
+            "semester": data.semester
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error enrolling in subject: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/students/me/schooling/{degree_id}/subjects/{subject_id}")
+async def remove_subject(
+    degree_id: str,
+    subject_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Remove a subject from student's record (both completed and in-progress)."""
+    try:
+        academic_service = get_academic_service()
+
+        schooling = await academic_service.remove_subject(
+            student_id=current_user.auth0_id,
+            degree_id=degree_id,
+            subject_id=subject_id
+        )
+
+        if not schooling:
+            raise HTTPException(status_code=404, detail="Subject or schooling record not found")
+
+        return {
+            "success": True,
+            "message": f"Subject {subject_id} removed from record"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing subject: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

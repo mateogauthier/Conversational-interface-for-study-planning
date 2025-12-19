@@ -12,7 +12,7 @@ import { setAccessToken } from './services/api';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import FilesPage from './pages/FilesPage';
-import CoursesPage from './pages/CoursesPage';
+import CoursesPage from './pages/CoursesPageEditable';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminFeedbackPage from './pages/AdminFeedbackPage';

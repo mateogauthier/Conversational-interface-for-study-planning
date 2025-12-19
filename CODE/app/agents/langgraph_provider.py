@@ -103,6 +103,41 @@ class LangGraphAgentProvider(AgentProvider):
 
         logger.info("LangGraph agent provider initialized with deterministic routing and web search")
 
+    async def _get_student_degree_id(self, user: UserInDB) -> Optional[str]:
+        """Get the student's degree ID dynamically by calling the API.
+
+        This queries the academic API to determine which degree the student is enrolled in,
+        or infers it intelligently if they have no enrollment yet.
+
+        Returns:
+            degree_id if found, None if no degrees available
+        """
+        try:
+            tool_call = await self.tool_executor.execute(
+                tool_name="get_student_degree",
+                parameters={},
+                user=user
+            )
+
+            # Check if tool execution failed
+            if tool_call.error:
+                logger.warning(f"Failed to get degree for student {user.auth0_id}: {tool_call.error}")
+                return None
+
+            # Extract degree_id from result
+            if tool_call.result and isinstance(tool_call.result, dict):
+                degree_id = tool_call.result.get("degree_id")
+                if degree_id:
+                    logger.info(f"Retrieved degree_id for student {user.auth0_id}: {degree_id}")
+                    return degree_id
+
+            logger.warning(f"No degree_id found in tool result for student {user.auth0_id}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting student degree: {e}")
+            return None
+
     def _build_graph(self) -> StateGraph:
         """Build the agent workflow graph.
 
@@ -287,12 +322,29 @@ class LangGraphAgentProvider(AgentProvider):
         """
         intent_prompt = f"""Classify this query into ONE of these categories:
 
-1. "student_schooling" - Asking about grades, GPA, academic record, scores, completed courses, transcript
-2. "student_plan" - Asking about study plan, future courses, what to take next semester, career planning
-3. "degree_curriculum" - Asking about degree requirements, curriculum structure, what courses are in the program, courses needed to graduate
+1. "student_schooling" - Asking about MY personal academic status:
+   - What courses am I currently taking/enrolled in?
+   - What courses have I completed/passed?
+   - What courses are available for me to register/enroll in?
+   - What can I take based on my prerequisites?
+   - What is my GPA, grades, scores?
+   - My academic record, transcript, progress
+
+2. "student_plan" - Asking about future planning:
+   - What should I take next semester?
+   - Career planning, study planning
+   - Recommendations for future courses
+
+3. "degree_curriculum" - Asking about general degree information (not MY status):
+   - What courses exist in the program?
+   - What are the degree requirements?
+   - Curriculum structure for the degree
+
 4. "none" - None of the above (general questions, other topics)
 
 Query: "{query}"
+
+IMPORTANT: If the query asks about "I" or "my" courses/progress/available options, choose "student_schooling".
 
 Respond with ONLY the category name, nothing else."""
 
@@ -707,8 +759,21 @@ Respond with ONLY the category name, nothing else."""
         try:
             # Extract student and degree info from user context
             student_id = state["user"].auth0_id
-            # TODO: Extract degree_id from user profile or query - for now use default
-            degree_id = "default_degree"
+            # Get degree_id dynamically from student enrollment
+            degree_id = await self._get_student_degree_id(state["user"])
+
+            if not degree_id:
+                # No degree found - return error
+                error_step = AgentStep(
+                    step_number=step_num + 1,
+                    step_type="result",
+                    content="No degree found for student. Please contact administrator."
+                )
+                return {
+                    "agent_steps": [thinking_step, error_step],
+                    "tools_executed": ["get_student_schooling"],
+                    "error": "No degree enrollment found"
+                }
 
             # Execute get_student_schooling via Agent API
             tool_call_result = await self.tool_executor.execute(
@@ -758,10 +823,33 @@ Respond with ONLY the category name, nothing else."""
                 tool_call=tool_call_result
             )
 
+            # Also fetch curriculum to determine available courses
+            curriculum_step = AgentStep(
+                step_number=step_num + 3,
+                step_type="thought",
+                content="Fetching curriculum to determine available courses"
+            )
+
+            curriculum_tool_result = await self.tool_executor.execute(
+                tool_name="get_degree_curriculum",
+                parameters={"degree_id": degree_id},
+                user=state["user"]
+            )
+
+            curriculum_tool_step = AgentStep(
+                step_number=step_num + 4,
+                step_type="tool_call",
+                content="Executing get_degree_curriculum",
+                tool_call=curriculum_tool_result
+            )
+
+            curriculum_data = curriculum_tool_result.result if not curriculum_tool_result.error else None
+
             return {
                 "student_schooling": schooling_data,
-                "agent_steps": [thinking_step, tool_step, result_step],
-                "tools_executed": ["get_student_schooling"]
+                "degree_curriculum": curriculum_data,
+                "agent_steps": [thinking_step, tool_step, result_step, curriculum_step, curriculum_tool_step],
+                "tools_executed": ["get_student_schooling", "get_degree_curriculum"]
             }
 
         except Exception as e:
@@ -793,8 +881,21 @@ Respond with ONLY the category name, nothing else."""
         try:
             # Extract student and degree info from user context
             student_id = state["user"].auth0_id
-            # TODO: Extract degree_id from user profile or query - for now use default
-            degree_id = "default_degree"
+            # Get degree_id dynamically from student enrollment
+            degree_id = await self._get_student_degree_id(state["user"])
+
+            if not degree_id:
+                # No degree found - return error
+                error_step = AgentStep(
+                    step_number=step_num + 1,
+                    step_type="result",
+                    content="No degree found for student. Please contact administrator."
+                )
+                return {
+                    "agent_steps": [thinking_step, error_step],
+                    "tools_executed": ["get_student_plan"],
+                    "error": "No degree enrollment found"
+                }
 
             # Execute get_student_plan via Agent API
             tool_call_result = await self.tool_executor.execute(
@@ -876,8 +977,21 @@ Respond with ONLY the category name, nothing else."""
         )
 
         try:
-            # TODO: Extract degree_id from query or user profile - for now use default
-            degree_id = "default_degree"
+            # Get degree_id dynamically from student enrollment
+            degree_id = await self._get_student_degree_id(state["user"])
+
+            if not degree_id:
+                # No degree found - return error
+                error_step = AgentStep(
+                    step_number=step_num + 1,
+                    step_type="result",
+                    content="No degree found in the system. Please contact administrator."
+                )
+                return {
+                    "agent_steps": [thinking_step, error_step],
+                    "tools_executed": ["get_degree_curriculum"],
+                    "error": "No degrees available"
+                }
 
             # Execute get_degree_curriculum via Agent API
             tool_call_result = await self.tool_executor.execute(
@@ -1003,19 +1117,80 @@ Respond with ONLY the category name, nothing else."""
                 context_parts.append(f"Student ID: {schooling.get('student_id', 'N/A')}")
                 context_parts.append(f"Degree ID: {schooling.get('degree_id', 'N/A')}")
                 context_parts.append(f"GPA: {schooling.get('gpa', 0.0)}")
-                context_parts.append(f"Total Credits: {schooling.get('total_credits', 0)}")
-                context_parts.append("\nCourses:")
-                for record in schooling.get("schooling_records", []):
-                    context_parts.append(
-                        f"  - {record.get('subject_name')} ({record.get('subject_id')}): "
-                        f"Grade {record.get('grade')}, {record.get('credits')} credits, "
-                        f"{record.get('semester')}, Status: {record.get('status')}"
-                    )
+                context_parts.append(f"Total Credits Earned: {schooling.get('total_credits', 0)}")
 
-                enhanced_query = f"""The user asked: {state["query"]}
+                # Completed courses
+                completed = schooling.get("schooling_records", [])
+                if completed:
+                    context_parts.append("\nCompleted Courses:")
+                    for record in completed:
+                        context_parts.append(
+                            f"  - {record.get('subject_name')} ({record.get('subject_id')}): "
+                            f"Grade {record.get('grade')}, {record.get('credits')} credits, "
+                            f"Status: {record.get('status')}"
+                        )
 
-I have retrieved the student's complete academic records including grades, GPA, and course history.
-Your task is to answer their question using this structured data in a clear, helpful format."""
+                # In-progress courses
+                in_progress = schooling.get("in_progress_subjects", [])
+                if in_progress:
+                    context_parts.append("\nCurrently Enrolled (In Progress):")
+                    for record in in_progress:
+                        context_parts.append(
+                            f"  - {record.get('subject_name')} ({record.get('subject_id')}): "
+                            f"{record.get('credits')} credits, Semester: {record.get('semester', 'N/A')}"
+                        )
+                else:
+                    context_parts.append("\nCurrently Enrolled: No courses in progress")
+
+                # Check if query is about available courses/enrollment
+                query_lower = state["query"].lower()
+                is_availability_query = any(keyword in query_lower for keyword in [
+                    "available", "enroll", "register", "inscrib"
+                ])
+
+                # Only include curriculum if asking about available courses
+                if is_availability_query and state.get("degree_curriculum"):
+                    curriculum = state["degree_curriculum"]
+                    context_parts.append("\n\nDegree Curriculum (for prerequisite checking):")
+                    for semester_data in curriculum.get("curriculum", []):
+                        sem_num = semester_data.get("semester", "?")
+                        context_parts.append(f"\nSemester {sem_num}:")
+                        for subj in semester_data.get("subjects", []):
+                            prereqs = subj.get("prerequisites", [])
+                            prereq_str = f", Prerequisites: {', '.join(prereqs)}" if prereqs else ""
+                            context_parts.append(
+                                f"  - {subj.get('name')} ({subj.get('subject_id')}): "
+                                f"{subj.get('credits')} credits{prereq_str}"
+                            )
+
+                    enhanced_query = f"""The user asked: {state["query"]}
+
+I have retrieved:
+1. Student's academic records (completed courses and courses in progress)
+2. Full degree curriculum with prerequisites
+
+IMPORTANT:
+- "Completed Courses" = courses the student has already passed (ONLY these with grades shown)
+- "Currently Enrolled (In Progress)" = courses the student is currently taking
+- To determine available courses: compare curriculum subjects against completed subjects by subject_id
+- A course is available if: (1) not completed, (2) not in progress, (3) all prerequisites are completed
+
+Your task is to answer their question accurately using this structured data."""
+                else:
+                    # Query about completed/current courses only - don't include curriculum
+                    enhanced_query = f"""The user asked: {state["query"]}
+
+I have retrieved the student's academic records showing:
+- Completed courses (with grades)
+- Currently enrolled courses (in progress)
+
+CRITICAL INSTRUCTIONS:
+- ONLY list courses shown in "Completed Courses" section when asked about completed courses
+- ONLY list courses shown in "Currently Enrolled (In Progress)" section when asked about current courses
+- DO NOT list any other courses or make assumptions
+- Answer ONLY what was explicitly asked
+
+Your task is to answer their specific question using ONLY the data provided above."""
 
             elif state.get("student_plan"):
                 plan = state["student_plan"]

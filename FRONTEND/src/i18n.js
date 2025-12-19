@@ -257,7 +257,21 @@ const resources = {
         noProgressData: 'No progress data available yet.',
         noCurriculumData: 'No curriculum information available.',
         noPlanData: 'No study plan created yet.',
-        createPlanHint: 'You can create a personalized study plan based on your progress.'
+        createPlanHint: 'You can create a personalized study plan based on your progress.',
+        // Edit actions
+        enrollInDegree: 'Enroll in Degree',
+        enrollInSubject: 'Enroll in Subject',
+        editGrade: 'Edit Grade',
+        remove: 'Remove',
+        save: 'Save',
+        cancel: 'Cancel',
+        enroll: 'Enroll',
+        selectDegree: 'Select a Degree Program',
+        enterGrade: 'Enter grade (0-100)',
+        invalidGrade: 'Please enter a valid grade between 0 and 100',
+        semesterRequired: 'Semester is required',
+        confirmRemove: 'Are you sure you want to remove this subject?',
+        semesters: 'semesters'
       }
     }
   },
@@ -516,7 +530,21 @@ const resources = {
         noProgressData: 'Aún no hay datos de progreso disponibles.',
         noCurriculumData: 'No hay información de currícula disponible.',
         noPlanData: 'Aún no se ha creado un plan de estudios.',
-        createPlanHint: 'Puedes crear un plan de estudios personalizado basado en tu progreso.'
+        createPlanHint: 'Puedes crear un plan de estudios personalizado basado en tu progreso.',
+        // Edit actions
+        enrollInDegree: 'Inscribirse en Carrera',
+        enrollInSubject: 'Inscribirse en Materia',
+        editGrade: 'Editar Nota',
+        remove: 'Eliminar',
+        save: 'Guardar',
+        cancel: 'Cancelar',
+        enroll: 'Inscribir',
+        selectDegree: 'Seleccionar un Programa de Carrera',
+        enterGrade: 'Ingresar nota (0-100)',
+        invalidGrade: 'Por favor ingrese una nota válida entre 0 y 100',
+        semesterRequired: 'El semestre es requerido',
+        confirmRemove: '¿Está seguro de que desea eliminar esta materia?',
+        semesters: 'semestres'
       }
     }
   }

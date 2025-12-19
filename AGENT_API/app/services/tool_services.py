@@ -706,6 +706,7 @@ class AgentToolService:
                 "student_id": schooling["student_id"],
                 "degree_id": schooling["degree_id"],
                 "schooling_records": schooling["completed_subjects"],
+                "in_progress_subjects": schooling.get("in_progress_subjects", []),
                 "total_credits": schooling["total_credits_earned"],
                 "gpa": schooling["gpa"]
             }
@@ -757,6 +758,43 @@ class AgentToolService:
             raise ValueError(f"Get plan failed: {e.response.text}")
         except Exception as e:
             logger.error(f"Error in get_student_plan: {e}")
+            raise
+
+    async def get_student_degree(
+        self,
+        user_auth0_id: str,
+        user_role: str
+    ) -> Dict[str, Any]:
+        """Get student's enrolled or inferred degree via main API.
+
+        Args:
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+
+        Returns:
+            Dict with degree_id
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.get(
+                "/academic/students/me/degree",
+                headers=self._create_auth_header(user_auth0_id, user_role)
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            return {
+                "degree_id": data["degree_id"]
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in get_student_degree: {e.response.status_code}")
+            raise ValueError(f"Get student degree failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in get_student_degree: {e}")
             raise
 
     async def update_student_plan(
