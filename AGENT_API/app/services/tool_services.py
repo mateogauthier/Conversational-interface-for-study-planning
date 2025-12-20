@@ -702,6 +702,12 @@ class AgentToolService:
             response.raise_for_status()
             schooling = response.json()
 
+            # DEBUG: Log what we got from main API
+            logger.info(f"DEBUG AGENT_API get_student_schooling: Main API response keys: {schooling.keys()}")
+            logger.info(f"DEBUG AGENT_API get_student_schooling: completed_subjects count: {len(schooling.get('completed_subjects', []))}")
+            logger.info(f"DEBUG AGENT_API get_student_schooling: in_progress_subjects count: {len(schooling.get('in_progress_subjects', []))}")
+            logger.info(f"DEBUG AGENT_API get_student_schooling: in_progress_subjects data: {schooling.get('in_progress_subjects', [])}")
+
             return {
                 "student_id": schooling["student_id"],
                 "degree_id": schooling["degree_id"],

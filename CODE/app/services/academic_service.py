@@ -197,7 +197,18 @@ class AcademicService:
         })
         if not schooling_doc:
             return None
-        return StudentSchoolingInDB(**schooling_doc)
+
+        # DEBUG: Log what we're getting from DB
+        logger.info(f"DEBUG get_student_schooling: completed_subjects count from DB: {len(schooling_doc.get('completed_subjects', []))}")
+        logger.info(f"DEBUG get_student_schooling: in_progress_subjects count from DB: {len(schooling_doc.get('in_progress_subjects', []))}")
+
+        try:
+            result = StudentSchoolingInDB(**schooling_doc)
+            logger.info(f"DEBUG get_student_schooling: After Pydantic - completed: {len(result.completed_subjects)}, in_progress: {len(result.in_progress_subjects)}")
+            return result
+        except Exception as e:
+            logger.error(f"Error deserializing schooling data: {e}", exc_info=True)
+            raise
 
     async def get_or_create_student_schooling(self, student_id: str, degree_id: str, user_id: str) -> StudentSchoolingInDB:
         """Get student schooling or create if it doesn't exist."""

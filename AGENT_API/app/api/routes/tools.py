@@ -346,6 +346,7 @@ async def get_student_schooling(request: GetStudentSchoolingRequest):
             student_id=result["student_id"],
             degree_id=result["degree_id"],
             schooling_records=result["schooling_records"],
+            in_progress_subjects=result["in_progress_subjects"],
             total_credits=result["total_credits"],
             gpa=result["gpa"]
         )
