@@ -151,16 +151,8 @@ async def startup_event():
         if settings.enable_agent_tools:
             agent_provider = create_agent_provider(
                 provider_type=settings.agent_provider,
-                llm_service=llm_service,
-                rag_service=rag_service_module.rag_service,
-                conversation_service=conv_service_module.conversation_service,
-                file_service=file_service,
-                user_service=get_user_service(db),
                 api_url=settings.agent_api_url,
-                api_key=settings.agent_api_key,
-                fallback_to_local=settings.agent_fallback_to_local,
-                max_iterations=settings.agent_max_iterations,
-                auto_approve_reads=settings.agent_auto_approve_reads
+                api_key=settings.agent_api_key
             )
             agent.set_agent_provider(agent_provider)
             logger.info(f"Agent provider initialized: {settings.agent_provider}")

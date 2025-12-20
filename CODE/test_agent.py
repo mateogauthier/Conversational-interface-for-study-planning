@@ -5,7 +5,7 @@ import asyncio
 import sys
 sys.path.insert(0, '/app')
 
-from app.agents.langgraph_provider import LangGraphAgentProvider
+from app.agents.react_langgraph_provider import ReActLangGraphProvider
 from app.tools.http_executor import HTTPToolExecutor
 from app.db.models import UserInDB
 from datetime import datetime
@@ -27,12 +27,12 @@ async def test_query(query: str):
         updated_at=datetime.utcnow()
     )
 
-    # Create agent
+    # Create ReAct agent
     tool_executor = HTTPToolExecutor(agent_api_url="http://agent-api:8002")
-    agent = LangGraphAgentProvider(tool_executor=tool_executor)
+    agent = ReActLangGraphProvider(tool_executor=tool_executor)
 
     # Execute query
-    result = await agent.process_query(query=query, user=user)
+    result = await agent.execute_query(query=query, user=user)
 
     print("\n--- ANSWER ---")
     print(result.answer)

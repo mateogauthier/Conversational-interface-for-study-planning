@@ -316,74 +316,51 @@ class APIAgentProvider(AgentProvider):
 # Factory function for creating agent provider based on configuration
 def create_agent_provider(
     provider_type: str,
-    llm_service=None,
-    rag_service=None,
-    conversation_service=None,
-    file_service=None,
-    user_service=None,
     api_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    fallback_to_local: bool = True,
     **kwargs
 ) -> AgentProvider:
     """Create agent provider based on configuration.
 
     Args:
-        provider_type: "local", "langgraph", or "api"
-        llm_service: LLMService instance (for local/langgraph provider)
-        rag_service: RAGService instance (for local/langgraph provider)
-        conversation_service: ConversationService instance (for local/langgraph provider)
-        file_service: FileService instance (for local/langgraph provider)
-        user_service: UserService instance (for local/langgraph provider)
-        api_url: External API URL (for API provider)
-        api_key: External API key (for API provider)
-        fallback_to_local: Whether to fallback to local on API failure
+        provider_type: "react" or "api"
+        api_url: Agent API URL (for tool execution) or External API URL (for API provider)
+        api_key: External API key (for API provider only)
         **kwargs: Additional configuration
 
     Returns:
         AgentProvider instance
+
+    Note:
+        Legacy providers ("local", "langgraph") have been removed.
+        Use "react" for the recommended ReAct-based LangGraph agent.
     """
-    from app.agents.local_provider import LocalAgentProvider
-    from app.agents.langgraph_provider import LangGraphAgentProvider
+    from app.agents.react_langgraph_provider import ReActLangGraphProvider
+    from app.tools.http_executor import HTTPToolExecutor
 
-    if provider_type == "local":
-        return LocalAgentProvider(
-            llm_service=llm_service,
-            rag_service=rag_service,
-            conversation_service=conversation_service,
-            file_service=file_service,
-            user_service=user_service,
-            **kwargs
-        )
-
-    elif provider_type == "langgraph":
-        return LangGraphAgentProvider(
-            llm_service=llm_service,
-            rag_service=rag_service,
-            conversation_service=conversation_service,
-            file_service=file_service,
-            user_service=user_service,
+    if provider_type == "react":
+        # ReAct agent uses HTTPToolExecutor for agent API calls
+        tool_executor = HTTPToolExecutor(agent_api_url=api_url)
+        return ReActLangGraphProvider(
+            tool_executor=tool_executor,
             **kwargs
         )
 
     elif provider_type == "api":
-        # Create local provider as fallback if enabled
-        fallback = None
-        if fallback_to_local:
-            fallback = LocalAgentProvider(
-                llm_service=llm_service,
-                rag_service=rag_service,
-                conversation_service=conversation_service,
-                file_service=file_service,
-                user_service=user_service,
-                **kwargs
-            )
-
+        # External agent API (stub implementation)
+        # No fallback to local since legacy providers removed
         return APIAgentProvider(
             api_url=api_url or "http://localhost:8080",
             api_key=api_key or "not_configured",
-            fallback_provider=fallback,
+            fallback_provider=None,
             **kwargs
+        )
+
+    # Legacy provider types - show helpful error message
+    elif provider_type in ["local", "langgraph"]:
+        raise ValueError(
+            f"Legacy agent provider '{provider_type}' has been removed. "
+            f"Use 'react' for the ReAct-based LangGraph agent instead."
         )
 
     else:
