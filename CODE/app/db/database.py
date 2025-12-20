@@ -60,3 +60,42 @@ mongodb = MongoDB()
 async def get_database() -> AsyncIOMotorDatabase:
     """Dependency to get database instance."""
     return mongodb.get_database()
+
+
+async def create_indexes():
+    """Create database indexes for optimal query performance."""
+    db = mongodb.get_database()
+
+    try:
+        # Academic system indexes
+        logger.info("Creating indexes for academic collections...")
+
+        # Degrees collection - unique degree_id
+        await db.degrees.create_index("degree_id", unique=True)
+        logger.info("✓ Created index on degrees.degree_id")
+
+        # Degree subjects collection - composite index for degree + subject lookup
+        await db.degree_subjects.create_index([("degree_id", 1), ("subject_id", 1)], unique=True)
+        await db.degree_subjects.create_index([("degree_id", 1), ("semester_offered", 1)])
+        logger.info("✓ Created indexes on degree_subjects")
+
+        # Student schooling collection - composite index for student + degree lookup
+        await db.student_schooling.create_index([("student_id", 1), ("degree_id", 1)], unique=True)
+        await db.student_schooling.create_index("user_id")
+        logger.info("✓ Created indexes on student_schooling")
+
+        # Student plans collection - composite index for student + degree + active
+        await db.student_plans.create_index([("student_id", 1), ("degree_id", 1), ("is_active", 1)], unique=True)
+        await db.student_plans.create_index("user_id")
+        logger.info("✓ Created indexes on student_plans")
+
+        # Existing collections (if not already created)
+        await db.users.create_index("auth0_id", unique=True)
+        await db.file_metadata.create_index([("user_id", 1), ("filename", 1)], unique=True)
+        await db.conversations.create_index([("auth0_id", 1), ("created_at", -1)])
+        await db.messages.create_index([("conversation_id", 1), ("timestamp", 1)])
+
+        logger.info("✅ All database indexes created successfully")
+
+    except Exception as e:
+        logger.warning(f"⚠️  Error creating indexes (may already exist): {e}")

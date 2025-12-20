@@ -37,17 +37,16 @@ The application consists of 4 main services running in Docker:
 
 ### Key Architectural Patterns
 
-**LangGraph Agent System** (`CODE/app/agents/`):
-- **Deterministic routing**: Python logic controls tool execution (not LLM guessing)
-- **State management**: LangGraph's `AgentState` TypedDict tracks workflow
-- **Complete file reading**: Reads entire documents after finding relevant chunks
-- **Python-based extraction**: Uses regex/Python for exhaustive data extraction (no hallucination)
-- **LLM for formatting only**: LLM receives pre-extracted data and only formats responses
+**ReAct Agent System** (`CODE/app/agents/`):
+- **LLM-based tool selection**: Uses LangGraph's `create_react_agent()` where the LLM intelligently chooses which tools to call based on user queries
+- **Function calling**: Llama 3.1 with native tool/function calling support
+- **Python-based prerequisite validation**: Deterministic course filtering in tool implementations
+- **No instruction bloat**: Tool descriptions guide LLM behavior instead of brittle prompt engineering
+- **Automatic workflow**: ReAct pattern handles reasoning → action → observation loop
 
 **Agent Providers** (configurable via `AGENT_PROVIDER` env var):
-- `langgraph` - **Recommended**: Production-ready with deterministic flow
-- `local` - Deprecated LLM-based agent
-- `api` - Remote agent via HTTP
+- `react` - **Recommended**: ReAct-based LangGraph agent with intelligent tool routing
+- `api` - Remote agent via HTTP (stub implementation for future external service)
 
 **Multi-Tenant File System**:
 - Private student files (owner only)
@@ -169,11 +168,9 @@ docker compose restart fastapi-app
 app/
 ├── main.py                      # FastAPI entry, startup events
 ├── agents/
-│   ├── langgraph_provider.py    # ⭐ LangGraph agent (recommended)
-│   ├── local_provider.py        # Deprecated LLM-based agent
+│   ├── react_langgraph_provider.py  # ⭐ ReAct agent (recommended)
 │   ├── api_provider.py          # Agent provider factory
-│   ├── base.py                  # AgentProvider interface
-│   └── tools/                   # Tool registry
+│   └── base.py                  # AgentProvider interface
 ├── api/
 │   ├── dependencies.py          # Auth dependencies
 │   └── routes/
@@ -219,64 +216,99 @@ src/
 └── i18n.js                     # Internationalization
 ```
 
-## LangGraph Agent Workflow
+## ReAct Agent Workflow
 
-The agent follows a deterministic workflow (not LLM-controlled):
+The agent uses LangGraph's `create_react_agent()` with intelligent tool selection:
 
 ```
 START
   ↓
-search_documents (ChromaDB semantic search)
+User Query → LLM analyzes query
   ↓
-should_read_file? (Python logic, not LLM)
-  ├─ YES → read_file_content → extract_data (regex/Python) → generate_answer
-  └─ NO → generate_answer (from chunks only)
+LLM decides which tool(s) to call based on:
+  - Tool descriptions (docstrings)
+  - Query intent
+  - Available context
   ↓
-save_conversation
+Tool Execution (one or more):
+  - search_documents: Search uploaded files
+  - get_student_schooling: Get completed/in-progress courses, GPA
+  - get_available_courses: Get enrollable courses (Python prerequisite validation)
+  - get_degree_curriculum: Get full degree curriculum
+  - get_student_plan: Get personalized study plan
+  - web_search: Search the web
+  ↓
+LLM receives tool results
+  ↓
+LLM generates natural language response
   ↓
 END
 ```
 
 **Critical Points**:
-- Routing decisions are in Python, not LLM calls
-- File reading is complete (not chunked)
-- Data extraction uses regex/Python (exhaustive, no hallucination)
-- LLM only formats pre-extracted data
+- **LLM-based routing**: The LLM intelligently selects which tools to call (no hardcoded rules)
+- **ReAct pattern**: Reasoning → Acting → Observing loop until answer is complete
+- **Python validation**: Prerequisite checking done deterministically in `get_available_courses` tool
+- **No instruction bloat**: Tool behavior defined by clear docstrings, not brittle prompts
+- **Multi-language support**: Automatically responds in same language as query (Spanish/English)
 
 ### Adding New Agent Tools
 
-See `CODE/app/agents/ADDING_TOOLS.md` for detailed guide. Quick summary:
+Adding tools to the ReAct agent is simple:
 
-1. Create tool function with `AgentState` parameter
-2. Add node to LangGraph workflow
-3. Define routing logic (Python, not LLM)
-4. Update state schema if needed
+1. Define a tool function decorated with `@tool` in [react_langgraph_provider.py](CODE/app/agents/react_langgraph_provider.py#L75):
 
-Example:
 ```python
-async def my_tool_node(state: AgentState) -> Dict[str, Any]:
-    result = do_something(state["query"])
-    return {
-        "my_data": result,
-        "agent_steps": [thinking_step, tool_step],
-        "tools_executed": ["my_tool"]
-    }
+@tool
+async def my_new_tool(param1: str, param2: int = 5) -> dict:
+    """Tool description that the LLM will read.
 
-# Add to graph
-workflow.add_node("my_tool", my_tool_node)
-workflow.add_edge("search_documents", "my_tool")
+    Use this when the user asks about X, Y, or Z.
+
+    Args:
+        param1: Description of parameter 1
+        param2: Description of parameter 2 (default: 5)
+
+    Returns:
+        Dict with results
+    """
+    # Tool implementation
+    result = await self.tool_executor.execute(
+        tool_name="my_tool_endpoint",
+        parameters={"param1": param1, "param2": param2},
+        user=self._current_user
+    )
+
+    if result.error:
+        return {"error": result.error}
+
+    return result.result
 ```
+
+2. Add to tool list in `_create_tools()`:
+
+```python
+return [
+    search_documents,
+    get_student_schooling,
+    # ... other tools ...
+    my_new_tool,  # Add here
+]
+```
+
+That's it! The LLM will automatically discover and use your tool based on its description.
 
 ## Environment Configuration
 
 Copy `.env.example` to `.env` and configure:
 
 **Critical Variables**:
-- `AGENT_PROVIDER=langgraph` - Use LangGraph agent (recommended)
+- `AGENT_PROVIDER=react` - Use ReAct agent (recommended)
 - `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` - Auth0 backend credentials
 - `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID` - Auth0 frontend credentials (public)
 - `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` - MongoDB credentials
-- `OLLAMA_MODEL` - LLM model (e.g., `gemma3:latest`, `llama2:latest`)
+- `OLLAMA_MODEL` - LLM model with function calling support (e.g., `llama3.1:8b`, `qwen2.5:7b`)
+  - **Note**: Model MUST support tool/function calling. Gemma and Llama 2 do NOT support this.
 
 **Optional Variables**:
 - `DEFAULT_LANGUAGE=auto` - Response language (auto, english, spanish)
@@ -308,10 +340,16 @@ docker exec study-planning-api python tests/demo_rag.py
 - Check both frontend and backend Auth0 credentials
 - Rebuild frontend after `.env` changes: `docker compose up --build frontend`
 
-**Agent returns incomplete results**:
-- Verify `AGENT_PROVIDER=langgraph` in `.env`
-- Check logs for "Programmatically extracted X entries"
-- LangGraph should show deterministic routing, not LLM loops
+**Agent returns tool/function calling errors**:
+- Verify `AGENT_PROVIDER=react` in `.env`
+- Check model supports function calling: `llama3.1:8b`, `qwen2.5:7b` work
+- Gemma and Llama 2 models do NOT support tools - use Llama 3.1+
+- Error "does not support tools (status code: 400)" means wrong model
+
+**Agent returns incomplete/wrong results**:
+- Check agent logs for tool calls: `docker compose logs -f fastapi-app`
+- Verify LLM is calling appropriate tools (should see "Calling get_student_schooling")
+- Test query phrasing - be specific ("que materias estoy cursando?" vs "hola")
 
 **MongoDB connection error**:
 - Check credentials in `.env` match `docker-compose.yml`
@@ -338,7 +376,7 @@ When running, interactive API docs available at:
 - ReDoc: http://localhost:8000/redoc
 
 Key endpoints:
-- `POST /rag/query` - Execute LangGraph agent workflow
+- `POST /rag/query` - Execute ReAct agent workflow
 - `POST /files/upload` - Upload document (private or public)
 - `GET /conversations/` - List user's chat history
 - `POST /feedback/message` - Submit like/dislike on response

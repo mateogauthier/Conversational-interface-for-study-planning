@@ -203,6 +203,20 @@ class UploadStudentSchoolingRequest(BaseModel):
     user_role: str = Field(..., description="User role")
 
 
+class GetStudentDegreeRequest(BaseModel):
+    """Request to get student's enrolled degree."""
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class GetStudentDegreeResponse(BaseModel):
+    """Response with student's degree ID."""
+    success: bool
+    message: str
+    degree_id: str = Field(..., description="Degree ID the student is enrolled in")
+
+
 class GetStudentSchoolingRequest(BaseModel):
     """Request to get student's schooling records."""
     student_id: str = Field(..., description="Student ID")
@@ -267,6 +281,7 @@ class GetStudentSchoolingResponse(BaseResponse):
     student_id: str = Field(..., description="Student ID")
     degree_id: str = Field(..., description="Degree ID")
     schooling_records: List[Dict[str, Any]] = Field(default_factory=list, description="Student's completed subjects")
+    in_progress_subjects: List[Dict[str, Any]] = Field(default_factory=list, description="Student's in-progress subjects")
     total_credits: int = Field(default=0, description="Total credits earned")
     gpa: float = Field(default=0.0, description="Grade point average")
 

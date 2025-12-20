@@ -12,6 +12,7 @@ import { setAccessToken } from './services/api';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import FilesPage from './pages/FilesPage';
+import CoursesPage from './pages/CoursesPageEditable';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminFeedbackPage from './pages/AdminFeedbackPage';
@@ -27,6 +28,7 @@ function MainContent() {
         <Route path="/" element={<HomePage />} />
         <Route path="/home" element={<HomePage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/courses" element={<CoursesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin/feedback" element={<AdminFeedbackPage />} />

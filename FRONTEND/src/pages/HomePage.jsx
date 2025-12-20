@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, FileText, Loader, MessageCircle, Plus, Trash2, Menu, X, ThumbsUp, ThumbsDown, Download, ChevronDown, ChevronUp, User, Bot } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { ragApi, llmApi, conversationApi, feedbackApi, fileApi, agentApi } from '../services/api';
@@ -114,18 +114,24 @@ function HomePage() {
     try {
       const response = await conversationApi.get(conversationId);
 
+      console.log('Loading conversation:', conversationId);
+      console.log('Response messages:', response.messages);
+
       // Convert messages to chat format
-      const chatMessages = response.messages.map(msg => ({
-        id: msg._id || msg.id,
-        type: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content,
-        timestamp: new Date(msg.timestamp),
-        model: msg.model_used,
-        sources: msg.source_files || [],
-        feedback: msg.feedback,
-        isLoadedFromHistory: true, // Mark as loaded from history
-        // Note: chunks are not stored in message history
-      }));
+      const chatMessages = response.messages.map(msg => {
+        console.log('Message role:', msg.role, 'Content:', msg.content.substring(0, 50));
+        return {
+          id: msg._id || msg.id,
+          type: msg.role, // Keep the role as-is (user/assistant)
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+          model: msg.model_used,
+          sources: msg.source_files || [],
+          feedback: msg.feedback,
+          isLoadedFromHistory: true, // Mark as loaded from history
+          // Note: chunks are not stored in message history
+        };
+      });
 
       setMessages(chatMessages);
       setCurrentConversationId(conversationId);
@@ -483,8 +489,10 @@ function HomePage() {
           style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '0',
+            padding: '1.5rem',
             backgroundColor: '#f8fafc',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
           {messages.length === 0 && (
@@ -501,28 +509,75 @@ function HomePage() {
 
           {messages.map((message, index) => (
             <ChatMessage
-              key={index}
+              key={message.id || index}
               message={message}
             />
           ))}
 
           {queryLoading && (
-            <div className="chat-message assistant">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Loader size={20} className="spinner-icon" style={{ animation: 'spin 1s linear infinite' }} />
-                <span>{t('home.thinking')}</span>
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem',
+              padding: '1rem',
+              marginBottom: '0.75rem',
+              alignItems: 'flex-start'
+            }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                backgroundColor: '#667eea',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Bot size={20} color="white" />
+              </div>
+              <div style={{
+                flex: 1,
+                backgroundColor: 'white',
+                padding: '1rem 1.25rem',
+                borderRadius: '1rem',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#718096' }}>
+                  <Loader size={18} className="spinner-icon" style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>{t('home.thinking')}</span>
+                </div>
               </div>
             </div>
           )}
 
           {/* Agent tool confirmation dialog */}
           {pendingConfirmations.length > 0 && (
-            <div className="chat-message assistant">
-              <ToolConfirmation
-                pendingConfirmations={pendingConfirmations}
-                onConfirmed={handleConfirmationApproved}
-                onCancelled={handleConfirmationCancelled}
-              />
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem',
+              padding: '1rem',
+              marginBottom: '0.75rem',
+              alignItems: 'flex-start'
+            }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                backgroundColor: '#667eea',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Bot size={20} color="white" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <ToolConfirmation
+                  pendingConfirmations={pendingConfirmations}
+                  onConfirmed={handleConfirmationApproved}
+                  onCancelled={handleConfirmationCancelled}
+                />
+              </div>
             </div>
           )}
 
@@ -574,6 +629,9 @@ function ChatMessage({ message }) {
   const [pendingFeedback, setPendingFeedback] = useState(null);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
 
+  const isUser = message.type === 'user';
+  const isAssistant = message.type === 'assistant';
+
   // Format file name helper function
   const formatFileName = (filename) => {
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
@@ -621,237 +679,320 @@ function ChatMessage({ message }) {
   };
 
   return (
-    <div className={`chat-message ${message.type}`} style={{ marginBottom: '1rem' }}>
-      <div className="chat-message-content">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw]}
-          components={{
-            code({ node, inline, className, children, ...props }) {
-              const match = /language-(\w+)/.exec(className || '');
-              const language = match ? match[1] : '';
-              const code = String(children).replace(/\n$/, '');
-
-              // Render mermaid diagrams with custom component
-              if (language === 'mermaid') {
-                return <MermaidDiagram chart={code} />;
-              }
-
-              // Regular code blocks
-              return !inline ? (
-                <pre className={className} style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '4px', overflow: 'auto' }}>
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                </pre>
-              ) : (
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              );
-            }
-          }}
-        >
-          {message.content}
-        </ReactMarkdown>
+    <div style={{
+      display: 'flex',
+      gap: '0.75rem',
+      padding: '0.5rem',
+      marginBottom: '0.75rem',
+      alignItems: 'flex-start',
+      flexDirection: isUser ? 'row-reverse' : 'row',
+    }}>
+      {/* Avatar */}
+      <div style={{
+        width: '36px',
+        height: '36px',
+        borderRadius: '50%',
+        backgroundColor: isUser ? '#48bb78' : '#667eea',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        {isUser ? <User size={20} color="white" /> : <Bot size={20} color="white" />}
       </div>
 
-      {message.sources && message.sources.length > 0 && (
-        <div className="chat-sources">
-          <div
-            className="chat-sources-title"
-            style={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}
-            onClick={() => setSourcesExpanded(!sourcesExpanded)}
-          >
-            <div>
-              <FileText size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
-              {t('home.sources')} ({message.sources.length})
-            </div>
-            {sourcesExpanded ?
-              <ChevronUp size={16} style={{ color: '#718096' }} /> :
-              <ChevronDown size={16} style={{ color: '#718096' }} />
-            }
+      {/* Message Content */}
+      <div style={{
+        flex: 1,
+        maxWidth: '75%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: isUser ? 'flex-end' : 'flex-start',
+      }}>
+        {/* Message Bubble */}
+        <div style={{
+          backgroundColor: isUser ? '#48bb78' : 'white',
+          color: isUser ? 'white' : '#2d3748',
+          padding: '1rem 1.25rem',
+          borderRadius: '1rem',
+          border: isUser ? 'none' : '1px solid #e2e8f0',
+          boxShadow: isUser ? '0 2px 8px rgba(72, 187, 120, 0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
+          width: '100%',
+          wordBreak: 'break-word',
+        }}>
+          <div className="chat-message-content">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                code({ node, inline, className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  const language = match ? match[1] : '';
+                  const code = String(children).replace(/\n$/, '');
+
+                  // Render mermaid diagrams with custom component
+                  if (language === 'mermaid') {
+                    return <MermaidDiagram chart={code} />;
+                  }
+
+                  // Regular code blocks
+                  return !inline ? (
+                    <pre className={className} style={{
+                      background: isUser ? 'rgba(255,255,255,0.2)' : '#f5f5f5',
+                      padding: '1rem',
+                      borderRadius: '0.5rem',
+                      overflow: 'auto',
+                      color: isUser ? 'white' : '#2d3748'
+                    }}>
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    </pre>
+                  ) : (
+                    <code className={className} style={{
+                      backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : '#f0f0f0',
+                      padding: '0.2rem 0.4rem',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.9em',
+                    }} {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
           </div>
-          {sourcesExpanded && (
-            <div className="chat-sources-list">
-              {message.sources.map((source, idx) => {
-              const formatted = formatFileName(source);
-              return (
+
+          {/* Sources */}
+          {message.sources && message.sources.length > 0 && (
+            <div style={{
+              marginTop: '1rem',
+              paddingTop: '1rem',
+              borderTop: `1px solid ${isUser ? 'rgba(255,255,255,0.3)' : '#e2e8f0'}`,
+            }}>
+              <div
+                style={{
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  color: isUser ? 'rgba(255,255,255,0.9)' : '#4a5568',
+                }}
+                onClick={() => setSourcesExpanded(!sourcesExpanded)}
+              >
+                <div>
+                  <FileText size={14} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                  {t('home.sources')} ({message.sources.length})
+                </div>
+                {sourcesExpanded ?
+                  <ChevronUp size={16} /> :
+                  <ChevronDown size={16} />
+                }
+              </div>
+              {sourcesExpanded && (
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  marginTop: '0.75rem'
+                }}>
+                  {message.sources.map((source, idx) => {
+                    const formatted = formatFileName(source);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => fileApi.download(source)}
+                        title={t('home.downloadSource') || 'Click to download'}
+                        style={{
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.375rem',
+                          transition: 'all 0.2s',
+                          padding: '0.375rem 0.625rem',
+                          backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+                          border: 'none',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.8rem',
+                          color: isUser ? 'white' : '#2d3748',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = isUser ? 'rgba(255,255,255,0.3)' : '#cbd5e0';
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = isUser ? 'rgba(255,255,255,0.2)' : '#e2e8f0';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                      >
+                        <Download size={12} />
+                        <span style={{ fontWeight: '500' }}>{formatted.display}</span>
+                        <span style={{
+                          fontSize: '0.7rem',
+                          backgroundColor: isUser ? 'rgba(255,255,255,0.3)' : '#cbd5e0',
+                          padding: '0.125rem 0.25rem',
+                          borderRadius: '3px',
+                          fontWeight: '600'
+                        }}>
+                          {formatted.extension}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Agent execution steps */}
+          {message.agentSteps && message.agentSteps.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <AgentSteps
+                steps={message.agentSteps}
+                toolsExecuted={message.toolsExecuted}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Metadata and Feedback */}
+        {isAssistant && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: '0.5rem',
+            width: '100%',
+            paddingLeft: '0.5rem',
+            gap: '1rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {message.model && (
+                <div style={{ fontSize: '0.75rem', color: '#a0aec0' }}>
+                  {t('home.model')}: {message.model}
+                </div>
+              )}
+            </div>
+
+            {/* Feedback buttons (only for newly received messages, not loaded from history) */}
+            {message.id && !message.isLoadedFromHistory && !showCommentBox && (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <button
-                  key={idx}
-                  className="source-badge"
-                  onClick={() => fileApi.download(source)}
-                  title={t('home.downloadSource') || 'Click to download'}
+                  onClick={() => handleFeedback('like')}
+                  disabled={submittingFeedback}
                   style={{
-                    cursor: 'pointer',
-                    display: 'inline-flex',
+                    background: 'none',
+                    border: 'none',
+                    cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                    padding: '0.25rem',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: '0.375rem',
-                    transition: 'all 0.2s',
-                    padding: '0.375rem 0.625rem'
+                    color: feedback === 'like' ? '#48bb78' : '#a0aec0',
+                    transition: 'color 0.2s',
+                    opacity: submittingFeedback ? 0.5 : 1,
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#cbd5e0';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#e2e8f0';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
+                  onMouseEnter={(e) => !submittingFeedback && feedback !== 'like' && (e.currentTarget.style.color = '#48bb78')}
+                  onMouseLeave={(e) => feedback !== 'like' && (e.currentTarget.style.color = '#a0aec0')}
+                  title={t('home.like')}
                 >
-                  <Download size={12} />
-                  <span style={{ fontWeight: '500' }}>{formatted.display}</span>
-                  <span style={{
-                    fontSize: '0.7rem',
-                    backgroundColor: '#cbd5e0',
-                    padding: '0.125rem 0.25rem',
-                    borderRadius: '3px',
-                    fontWeight: '600'
-                  }}>
-                    {formatted.extension}
-                  </span>
+                  <ThumbsUp size={16} fill={feedback === 'like' ? '#48bb78' : 'none'} />
                 </button>
-              );
-            })}
+                <button
+                  onClick={() => handleFeedback('dislike')}
+                  disabled={submittingFeedback}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                    padding: '0.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: feedback === 'dislike' ? '#f56565' : '#a0aec0',
+                    transition: 'color 0.2s',
+                    opacity: submittingFeedback ? 0.5 : 1,
+                  }}
+                  onMouseEnter={(e) => !submittingFeedback && feedback !== 'dislike' && (e.currentTarget.style.color = '#f56565')}
+                  onMouseLeave={(e) => feedback !== 'dislike' && (e.currentTarget.style.color = '#a0aec0')}
+                  title={t('home.dislike')}
+                >
+                  <ThumbsDown size={16} fill={feedback === 'dislike' ? '#f56565' : 'none'} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Comment box for feedback */}
+        {showCommentBox && isAssistant && message.id && (
+          <div style={{
+            marginTop: '0.75rem',
+            padding: '1rem',
+            backgroundColor: '#f8fafc',
+            borderRadius: '0.75rem',
+            border: '1px solid #e2e8f0',
+            width: '100%',
+          }}>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#4a5568' }}>
+              {pendingFeedback === 'like' ? '👍 ' : '👎 '}
+              Add a comment (optional)
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Agent execution steps */}
-      {message.agentSteps && message.agentSteps.length > 0 && (
-        <AgentSteps
-          steps={message.agentSteps}
-          toolsExecuted={message.toolsExecuted}
-        />
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {message.model && (
-            <div style={{ fontSize: '0.75rem', color: '#a0aec0' }}>
-              {t('home.model')}: {message.model}
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Share your thoughts about this response..."
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                padding: '0.5rem',
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e0',
+                borderRadius: '0.5rem',
+                color: '#2d3748',
+                fontSize: '0.875rem',
+                resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button
+                onClick={submitFeedbackWithComment}
+                disabled={submittingFeedback}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: pendingFeedback === 'like' ? '#48bb78' : '#f56565',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  opacity: submittingFeedback ? 0.6 : 1,
+                }}
+              >
+                {submittingFeedback ? 'Submitting...' : 'Submit Feedback'}
+              </button>
+              <button
+                onClick={cancelFeedback}
+                disabled={submittingFeedback}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#ffffff',
+                  color: '#718096',
+                  border: '1px solid #cbd5e0',
+                  borderRadius: '0.5rem',
+                  cursor: submittingFeedback ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Cancel
+              </button>
             </div>
-          )}
-        </div>
-
-        {/* Feedback buttons for assistant messages (only for newly received messages, not loaded from history) */}
-        {message.type === 'assistant' && message.id && !message.isLoadedFromHistory && !showCommentBox && (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button
-              onClick={() => handleFeedback('like')}
-              disabled={submittingFeedback}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
-                padding: '0.25rem',
-                display: 'flex',
-                alignItems: 'center',
-                color: feedback === 'like' ? '#48bb78' : '#a0aec0',
-                transition: 'color 0.2s',
-                opacity: submittingFeedback ? 0.5 : 1,
-              }}
-              onMouseEnter={(e) => !submittingFeedback && feedback !== 'like' && (e.currentTarget.style.color = '#48bb78')}
-              onMouseLeave={(e) => feedback !== 'like' && (e.currentTarget.style.color = '#a0aec0')}
-              title={t('home.like')}
-            >
-              <ThumbsUp size={16} fill={feedback === 'like' ? '#48bb78' : 'none'} />
-            </button>
-            <button
-              onClick={() => handleFeedback('dislike')}
-              disabled={submittingFeedback}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
-                padding: '0.25rem',
-                display: 'flex',
-                alignItems: 'center',
-                color: feedback === 'dislike' ? '#f56565' : '#a0aec0',
-                transition: 'color 0.2s',
-                opacity: submittingFeedback ? 0.5 : 1,
-              }}
-              onMouseEnter={(e) => !submittingFeedback && feedback !== 'dislike' && (e.currentTarget.style.color = '#f56565')}
-              onMouseLeave={(e) => feedback !== 'dislike' && (e.currentTarget.style.color = '#a0aec0')}
-              title={t('home.dislike')}
-            >
-              <ThumbsDown size={16} fill={feedback === 'dislike' ? '#f56565' : 'none'} />
-            </button>
           </div>
         )}
       </div>
-
-      {/* Comment box for feedback */}
-      {showCommentBox && message.type === 'assistant' && message.id && (
-        <div style={{
-          marginTop: '1rem',
-          padding: '1rem',
-          backgroundColor: '#f8fafc',
-          borderRadius: '0.5rem',
-          border: '1px solid #e2e8f0',
-        }}>
-          <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#4a5568' }}>
-            {pendingFeedback === 'like' ? '👍 ' : '👎 '}
-            Add a comment (optional)
-          </div>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="Share your thoughts about this response..."
-            style={{
-              width: '100%',
-              minHeight: '80px',
-              padding: '0.5rem',
-              backgroundColor: '#ffffff',
-              border: '1px solid #cbd5e0',
-              borderRadius: '0.25rem',
-              color: '#2d3748',
-              fontSize: '0.875rem',
-              resize: 'vertical',
-              fontFamily: 'inherit',
-            }}
-          />
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <button
-              onClick={submitFeedbackWithComment}
-              disabled={submittingFeedback}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: pendingFeedback === 'like' ? '#48bb78' : '#f56565',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.25rem',
-                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-                opacity: submittingFeedback ? 0.6 : 1,
-              }}
-            >
-              {submittingFeedback ? 'Submitting...' : 'Submit Feedback'}
-            </button>
-            <button
-              onClick={cancelFeedback}
-              disabled={submittingFeedback}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#ffffff',
-                color: '#718096',
-                border: '1px solid #cbd5e0',
-                borderRadius: '0.25rem',
-                cursor: submittingFeedback ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

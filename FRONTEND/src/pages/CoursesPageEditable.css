@@ -1,0 +1,238 @@
+/* Edit actions on subject cards */
+.subject-actions {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.action-button {
+  padding: 0.25rem;
+  border: none;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.action-button:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+.enroll-button {
+  color: #3b82f6;
+}
+
+.enroll-button:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.edit-button {
+  color: #f59e0b;
+}
+
+.edit-button:hover {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.delete-button {
+  color: #ef4444;
+}
+
+.delete-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Edit form */
+.subject-edit-form {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.grade-input,
+.semester-input {
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.grade-input:focus,
+.semester-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.save-button,
+.cancel-button {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  transition: all 0.2s;
+}
+
+.save-button {
+  background: #22c55e;
+  color: white;
+}
+
+.save-button:hover {
+  background: #16a34a;
+}
+
+.cancel-button {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.cancel-button:hover {
+  background: #d1d5db;
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-content h2 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.5rem;
+  color: #111827;
+}
+
+.degree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.degree-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.degree-item:hover {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.degree-item h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.125rem;
+  color: #111827;
+}
+
+.degree-item p {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.degree-item small {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.primary-button,
+.secondary-button {
+  flex: 1;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.primary-button {
+  background: #667eea;
+  color: white;
+}
+
+.primary-button:hover {
+  background: #5568d3;
+}
+
+.secondary-button {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.secondary-button:hover {
+  background: #d1d5db;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .modal-content {
+    padding: 1.5rem;
+  }
+
+  .degree-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .degree-item button {
+    width: 100%;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+}
