@@ -380,6 +380,7 @@ async def get_student_plan(request: GetStudentPlanRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/update_student_plan", response_model=UpdateStudentPlanResponse)
 @router.patch("/update_student_plan", response_model=UpdateStudentPlanResponse)
 async def update_student_plan(request: UpdateStudentPlanRequest):
     """Modify student's career plan."""
