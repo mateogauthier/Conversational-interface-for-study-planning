@@ -45,7 +45,8 @@ The application consists of 4 main services running in Docker:
 - **Automatic workflow**: ReAct pattern handles reasoning → action → observation loop
 
 **Agent Providers** (configurable via `AGENT_PROVIDER` env var):
-- `react` - **Recommended**: ReAct-based LangGraph agent with intelligent tool routing
+- `react` - **Recommended**: ReAct-based LangGraph agent with intelligent tool routing (fast, simple)
+- `instructor` - **Advanced**: Instructor-enhanced ReAct with structured iterative reasoning (explicit planning, validation, better error handling)
 - `api` - Remote agent via HTTP (stub implementation for future external service)
 
 **Multi-Tenant File System**:
@@ -252,6 +253,52 @@ END
 - **No instruction bloat**: Tool behavior defined by clear docstrings, not brittle prompts
 - **Multi-language support**: Automatically responds in same language as query (Spanish/English)
 
+## Instructor-Enhanced Agent Workflow (Advanced)
+
+The `instructor` agent provider adds structured iterative reasoning on top of ReAct:
+
+```
+START
+  ↓
+1. PLANNING PHASE (Instructor)
+   - Analyze user intent
+   - Determine optimal strategy
+   - Identify required tools
+   - Plan execution steps
+   - Anticipate challenges
+  ↓
+2. EXECUTION PHASE (ReAct iterations)
+   For each iteration (max 5):
+     - Execute tools via ReAct agent
+     - Collect structured results
+     - Assess if sufficient information gathered
+     - Decide next action if needed
+  ↓
+3. VALIDATION PHASE (Instructor)
+   - Validate answer completeness
+   - Calculate confidence score
+   - Identify supporting evidence
+   - Flag caveats or limitations
+  ↓
+4. FINAL ANSWER
+   - Structured response with confidence
+   - Clear evidence trail
+   - Explicit limitations noted
+  ↓
+END
+```
+
+**Why use Instructor agent?**
+- **Explicit planning**: Agent explains its reasoning before execution
+- **Better error recovery**: Structured validation catches incomplete answers
+- **Confidence scoring**: Know how sure the agent is about its answer
+- **Evidence tracking**: Clear trail of what information supports the answer
+- **Iterative refinement**: Agent can recognize when it needs more information
+
+**When to use each agent:**
+- `react` - Fast, straightforward queries; production use
+- `instructor` - Complex multi-step problems requiring validation; development/debugging
+
 ### Adding New Agent Tools
 
 Adding tools to the ReAct agent is simple:
@@ -303,12 +350,13 @@ That's it! The LLM will automatically discover and use your tool based on its de
 Copy `.env.example` to `.env` and configure:
 
 **Critical Variables**:
-- `AGENT_PROVIDER=react` - Use ReAct agent (recommended)
+- `AGENT_PROVIDER` - Agent type: `react` (recommended, fast) or `instructor` (advanced, structured reasoning)
 - `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` - Auth0 backend credentials
 - `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID` - Auth0 frontend credentials (public)
 - `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` - MongoDB credentials
 - `OLLAMA_MODEL` - LLM model with function calling support (e.g., `llama3.1:8b`, `qwen2.5:7b`)
   - **Note**: Model MUST support tool/function calling. Gemma and Llama 2 do NOT support this.
+  - **For Instructor**: Model must also support JSON output mode for structured responses
 
 **Optional Variables**:
 - `DEFAULT_LANGUAGE=auto` - Response language (auto, english, spanish)

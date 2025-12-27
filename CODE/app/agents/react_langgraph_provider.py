@@ -98,18 +98,21 @@ Do not invent data - always use tool results."""
             return result.result
 
         @tool
-        async def get_student_schooling(include_gpa: bool = True) -> dict:
-            """Get student's academic transcript with completed courses and grades.
+        async def get_completed_courses() -> dict:
+            """Get student's COMPLETED courses with final grades and GPA.
 
             Use this when the user asks about:
-            - "What courses am I taking?" / "que materias estoy cursando?"
-            - "What have I completed?" / "materias completadas"
-            - "My grades" / "mis calificaciones"
-            - "My GPA" / "mi promedio"
-            - "My academic record" / "mi historial académico"
+            - Completed courses, passed courses, finished courses
+            - Final grades, marks, scores
+            - GPA, grade point average, academic average
+            - Which courses make up the GPA
+            - Earned credits
+
+            Returns ONLY courses that have been fully completed with final grades.
+            These courses count toward GPA calculation.
 
             Returns:
-                Dict with completed_courses, in_progress_courses, total_credits, and GPA
+                Dict with completed_courses list, total_credits_earned, gpa, course_count
             """
             # Get student degree first
             degree_result = await self.tool_executor.execute(
@@ -138,7 +141,65 @@ Do not invent data - always use tool results."""
             if result.error:
                 return {"error": result.error}
 
-            return result.result
+            # Return only completed courses data
+            data = result.result
+            return {
+                "completed_courses": data.get("schooling_records", []),
+                "total_credits_earned": data.get("total_credits", 0),
+                "gpa": data.get("gpa", 0.0),
+                "course_count": len(data.get("schooling_records", []))
+            }
+
+        @tool
+        async def get_current_courses() -> dict:
+            """Get student's CURRENT in-progress courses (currently enrolled).
+
+            Use this when the user asks about:
+            - Current courses, ongoing courses, courses in progress
+            - What they are currently taking or enrolled in
+            - Active enrollments this semester
+
+            Returns ONLY courses currently being taken.
+            These do NOT have final grades yet and do NOT count toward current GPA.
+
+            Returns:
+                Dict with in_progress_courses list, course_count, note
+            """
+            # Get student degree first
+            degree_result = await self.tool_executor.execute(
+                tool_name="get_student_degree",
+                parameters={},
+                user=self._current_user
+            )
+
+            if degree_result.error:
+                return {"error": "Could not retrieve student degree"}
+
+            degree_id = degree_result.result.get("degree_id")
+            if not degree_id:
+                return {"error": "Student not enrolled in a degree program"}
+
+            # Get schooling records
+            result = await self.tool_executor.execute(
+                tool_name="get_student_schooling",
+                parameters={
+                    "student_id": str(self._current_user.id),
+                    "degree_id": degree_id
+                },
+                user=self._current_user
+            )
+
+            if result.error:
+                return {"error": result.error}
+
+            # Return only in-progress courses data
+            data = result.result
+            in_progress = data.get("in_progress_subjects", [])
+            return {
+                "in_progress_courses": in_progress,
+                "course_count": len(in_progress),
+                "note": "These courses do not yet have final grades and do not affect current GPA"
+            }
 
         @tool
         async def get_available_courses() -> dict:
@@ -456,7 +517,8 @@ Do not invent data - always use tool results."""
 
         return [
             search_documents,
-            get_student_schooling,
+            get_completed_courses,
+            get_current_courses,
             get_available_courses,
             get_degree_curriculum,
             get_student_plan,
@@ -575,9 +637,15 @@ Do not invent data - always use tool results."""
                 safety=ToolSafety.SAFE
             ),
             Tool(
-                name="get_student_schooling",
-                description="Get student's academic transcript with completed courses and grades",
-                parameters_schema={"type": "object", "properties": {"include_gpa": {"type": "boolean"}}},
+                name="get_completed_courses",
+                description="Get student's completed courses with final grades and GPA",
+                parameters_schema={"type": "object", "properties": {}},
+                safety=ToolSafety.SAFE
+            ),
+            Tool(
+                name="get_current_courses",
+                description="Get student's current in-progress courses (currently enrolled)",
+                parameters_schema={"type": "object", "properties": {}},
                 safety=ToolSafety.SAFE
             ),
             Tool(
