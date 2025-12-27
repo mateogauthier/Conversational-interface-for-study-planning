@@ -31,6 +31,14 @@ class ReasoningStrategy(str, Enum):
     ITERATIVE_REFINEMENT = "iterative_refinement"  # Need to iterate and refine
 
 
+class ClarificationQuestion(BaseModel):
+    """Question the agent needs answered before proceeding."""
+
+    question: str = Field(description="The question to ask the user")
+    reason: str = Field(description="Why this information is needed")
+    options: Optional[List[str]] = Field(None, description="Suggested options if applicable")
+
+
 class QueryPlan(BaseModel):
     """Structured plan for answering a user query."""
 
@@ -55,6 +63,11 @@ class QueryPlan(BaseModel):
     expected_challenges: List[str] = Field(
         default_factory=list,
         description="Potential issues or edge cases to watch for"
+    )
+
+    clarification_needed: Optional[ClarificationQuestion] = Field(
+        None,
+        description="Question to ask user before proceeding (if information is missing or ambiguous)"
     )
 
     can_answer_now: bool = Field(
@@ -183,12 +196,19 @@ class InstructorReActProvider(AgentProvider):
 
 Available tools:
 - search_documents: Search uploaded files
-- get_student_schooling: Get completed courses and GPA
+- get_completed_courses: Get completed courses with final grades and GPA
+- get_current_courses: Get in-progress courses currently enrolled
 - get_available_courses: Get enrollable courses (prerequisites validated)
 - get_degree_curriculum: Get full degree curriculum
-- get_student_plan: View existing study plan
-- create_study_plan: Generate new study plan
+- get_student_plan: View existing saved study plan
+- create_study_plan: Generate NEW study plan and save to database
 - web_search: Search the web
+
+Important distinctions:
+- Use create_study_plan when user wants to GENERATE/CREATE a plan for future semesters
+- Use get_student_plan when user wants to VIEW an existing saved plan
+- Use get_completed_courses for GPA and past performance
+- Use get_current_courses for ongoing enrollments
 
 User query: "{query}"
 
@@ -196,7 +216,14 @@ Create a detailed plan for answering this query. Think step-by-step:
 1. What is the user trying to accomplish?
 2. What information do we need?
 3. Which tools should we use and in what order?
-4. What could go wrong?"""
+4. What could go wrong?
+
+IMPORTANT: If the query is ambiguous or missing critical information, set clarification_needed with a specific question to ask the user. For example:
+- If user asks for "a study plan" but doesn't specify graduation date or credit preferences
+- If user's intent could mean multiple different things
+- If you need to know user preferences to give a good answer
+
+Ask clarifying questions to provide the best possible help."""
 
         try:
             # Use Instructor to get structured plan
@@ -340,16 +367,39 @@ Be honest about confidence and limitations."""
         auto_approve_tools: bool = False,
         **kwargs
     ) -> AgentResponse:
-        """Execute query with structured iterative reasoning."""
+        """Execute query with structured iterative reasoning.
+
+        Args:
+            query: User's query or answer to a previous question
+            user: User making the request
+            conversation_id: Conversation ID
+            auto_approve_tools: Whether to auto-approve tools
+            **kwargs: Additional params including question_id and answer_to_question
+        """
 
         self._current_user = user
         agent_steps = []
         iteration_results = []
 
+        # Check if this is an answer to a previous question
+        question_id = kwargs.get("question_id")
+        answer_to_question = kwargs.get("answer_to_question")
+
+        if question_id and answer_to_question:
+            # User is providing an answer - incorporate it into the query
+            original_query = kwargs.get("original_query", query)
+            query = f"{original_query}\n\nUser provided additional information: {answer_to_question}"
+
+            agent_steps.append(AgentStep(
+                step_number=1,
+                step_type="thought",
+                content=f"✓ Received answer to clarification question: {answer_to_question}"
+            ))
+
         try:
             # Step 1: Create structured plan using Instructor
             agent_steps.append(AgentStep(
-                step_number=1,
+                step_number=len(agent_steps) + 1,
                 step_type="thought",
                 content="📋 Creating structured plan for query..."
             ))
@@ -361,6 +411,38 @@ Be honest about confidence and limitations."""
                 step_type="thought",
                 content=f"✓ Plan created:\n- Intent: {plan.user_intent}\n- Strategy: {plan.strategy.value}\n- Required tools: {', '.join(plan.required_tools)}\n- Reasoning: {plan.reasoning}"
             ))
+
+            # Check if clarification is needed
+            if plan.clarification_needed:
+                from app.agents.base import AgentQuestion
+                import uuid
+
+                question_id = str(uuid.uuid4())
+
+                agent_steps.append(AgentStep(
+                    step_number=len(agent_steps) + 1,
+                    step_type="thought",
+                    content=f"❓ Need clarification: {plan.clarification_needed.reason}"
+                ))
+
+                return AgentResponse(
+                    answer=f"I need more information to help you better:\n\n{plan.clarification_needed.question}",
+                    agent_steps=agent_steps,
+                    pending_questions=[
+                        AgentQuestion(
+                            question_id=question_id,
+                            question=plan.clarification_needed.question,
+                            context=plan.clarification_needed.reason,
+                            options=plan.clarification_needed.options,
+                            is_required=True,
+                            conversation_id=conversation_id or "unknown"
+                        )
+                    ],
+                    requires_user_input=True,
+                    is_complete=False,
+                    iterations_completed=0,
+                    conversation_id=conversation_id
+                )
 
             # If we can answer directly, do it
             if plan.can_answer_now:

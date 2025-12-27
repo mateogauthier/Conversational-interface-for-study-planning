@@ -93,7 +93,11 @@ async def agent_query(
             model=request.model,
             language=request.language,
             instructions=request.instructions,
-            enable_artifacts=request.enable_artifacts
+            enable_artifacts=request.enable_artifacts,
+            # Pass through question/answer parameters
+            question_id=request.question_id,
+            answer_to_question=request.answer_to_question,
+            original_query=request.prompt
         )
 
         # Convert to API response model

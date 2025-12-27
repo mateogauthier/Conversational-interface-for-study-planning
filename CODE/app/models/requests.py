@@ -35,6 +35,8 @@ class AgentQueryRequest(RAGLLMRequest):
     """Request model for agent-powered queries (extends RAGLLMRequest)."""
     enable_agent: Optional[bool] = Field(True, description="Whether to enable agent tool execution")
     auto_approve_tools: Optional[bool] = Field(False, description="Auto-approve all tool executions (overrides safety settings)")
+    question_id: Optional[str] = Field(None, description="ID of question being answered (if continuing from a question)")
+    answer_to_question: Optional[str] = Field(None, description="User's answer to agent's question")
 
 
 class AgentConfirmRequest(BaseModel):

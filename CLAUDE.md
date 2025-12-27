@@ -266,6 +266,9 @@ START
    - Identify required tools
    - Plan execution steps
    - Anticipate challenges
+   - ASK QUESTIONS if information is missing or ambiguous
+  ↓
+  [If clarification needed] → PAUSE, ask user question, wait for answer → Resume
   ↓
 2. EXECUTION PHASE (ReAct iterations)
    For each iteration (max 5):
@@ -290,6 +293,7 @@ END
 
 **Why use Instructor agent?**
 - **Explicit planning**: Agent explains its reasoning before execution
+- **Interactive questioning**: Agent asks clarifying questions when needed (see [AGENT_QUESTIONS_GUIDE.md](AGENT_QUESTIONS_GUIDE.md))
 - **Better error recovery**: Structured validation catches incomplete answers
 - **Confidence scoring**: Know how sure the agent is about its answer
 - **Evidence tracking**: Clear trail of what information supports the answer

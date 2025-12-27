@@ -329,10 +329,10 @@ Do not invent data - always use tool results."""
         async def get_student_plan() -> dict:
             """Get the student's EXISTING study plan (read-only).
 
-            Use this ONLY when the user asks to VIEW or SEE their existing plan:
-            - "Show me my study plan"
-            - "What's my current plan?"
-            - "View my semester schedule"
+            Use this ONLY when the user asks to VIEW or SEE an already saved plan:
+            - Show my plan, view my plan
+            - What's my current plan, do I have a plan
+            - View my schedule, see my schedule
 
             DO NOT use this to CREATE a new plan - use create_study_plan instead.
 
@@ -388,14 +388,16 @@ Do not invent data - always use tool results."""
             Creates a detailed plan with specific courses for each future semester,
             ensuring all prerequisites are met and credit loads are realistic.
 
-            Use this when user asks to CREATE, GENERATE, or MAKE a plan:
-            - "Create my study plan"
-            - "Generate a study plan"
-            - "Make me a study plan"
-            - "Plan my remaining semesters"
-            - "When can I graduate?"
-            - "Generate my career plan"
-            - "Make a graduation plan"
+            Use this when user asks to CREATE, GENERATE, or MAKE a study plan for:
+            - Future semesters, next year, next semester, remaining courses
+            - Graduation planning, career planning
+            - Study schedule creation
+
+            Examples of when to use:
+            - Create my study plan, generate a plan, make me a plan
+            - Plan for next year, plan for next semester
+            - When can I graduate, graduation timeline
+            - Plan my remaining semesters, schedule my courses
 
             IMPORTANT:
             - Only uses real courses from the curriculum. Never invents courses.

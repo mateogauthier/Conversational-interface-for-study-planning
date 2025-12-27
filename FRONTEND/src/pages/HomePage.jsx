@@ -76,6 +76,8 @@ function HomePage() {
 
   // Agent state
   const [pendingConfirmations, setPendingConfirmations] = useState([]);
+  const [pendingQuestions, setPendingQuestions] = useState([]);
+  const [currentQuestionId, setCurrentQuestionId] = useState(null);
 
   // Library renders everything inline - no separate artifact panel needed
 
@@ -215,6 +217,15 @@ function HomePage() {
           setPendingConfirmations([]);
         }
 
+        // Check for pending questions (agent only)
+        if (response.pending_questions && response.pending_questions.length > 0) {
+          setPendingQuestions(response.pending_questions);
+          setCurrentQuestionId(response.pending_questions[0].question_id);
+        } else {
+          setPendingQuestions([]);
+          setCurrentQuestionId(null);
+        }
+
         // Create assistant message with agent-specific fields
         const assistantMessage = {
           id: response.message_id,
@@ -302,6 +313,82 @@ function HomePage() {
     };
 
     setMessages((prev) => [...prev, assistantMessage]);
+  };
+
+  // Agent question handlers
+  const handleQuestionAnswer = async (answer) => {
+    if (!currentQuestionId) return;
+
+    // Add user's answer to chat
+    const userMessage = {
+      type: 'user',
+      content: answer,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Clear pending questions
+    setPendingQuestions([]);
+    setQueryLoading(true);
+
+    try {
+      // Get current question
+      const question = pendingQuestions[0];
+
+      // Send answer back to agent
+      const preferredModel = localStorage.getItem('preferredModel');
+      const preferredLanguage = localStorage.getItem('preferredLanguage') || 'auto';
+      const preferredChunks = parseInt(localStorage.getItem('preferredChunks') || '5');
+
+      const response = await agentApi.query(question.question, {
+        conversationId: currentConversationId,
+        nResults: preferredChunks,
+        language: preferredLanguage === 'auto' ? null : preferredLanguage,
+        model: preferredModel || null,
+        enableAgent: true,
+        questionId: currentQuestionId,
+        answerToQuestion: answer,
+      });
+
+      // Update conversation ID
+      setCurrentConversationId(response.conversation_id);
+
+      // Check for more questions
+      if (response.pending_questions && response.pending_questions.length > 0) {
+        setPendingQuestions(response.pending_questions);
+        setCurrentQuestionId(response.pending_questions[0].question_id);
+      } else {
+        setCurrentQuestionId(null);
+      }
+
+      // Add agent response
+      const assistantMessage = {
+        id: response.message_id,
+        type: 'assistant',
+        content: response.answer,
+        sources: response.sources || [],
+        chunks: response.relevant_chunks || [],
+        model: response.model_used,
+        timestamp: new Date(),
+        agentSteps: response.agent_steps || [],
+        toolsExecuted: response.tools_executed || [],
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Reload conversations
+      loadConversations();
+    } catch (error) {
+      const errorMessage = {
+        type: 'assistant',
+        content: error.response?.data?.detail || t('home.errorMessage'),
+        error: true,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setQueryLoading(false);
+    }
   };
 
   return (
@@ -577,6 +664,94 @@ function HomePage() {
                   onConfirmed={handleConfirmationApproved}
                   onCancelled={handleConfirmationCancelled}
                 />
+              </div>
+            </div>
+          )}
+
+          {pendingQuestions.length > 0 && (
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem',
+              backgroundColor: '#f0f9ff',
+              borderRadius: '12px',
+              padding: '1rem',
+              marginBottom: '0.75rem',
+              alignItems: 'flex-start',
+              border: '1px solid #b3e0ff'
+            }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                backgroundColor: '#2196f3',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <Bot size={20} color="white" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#2196f3' }}>
+                    ❓ {pendingQuestions[0].question}
+                  </div>
+                  {pendingQuestions[0].context && (
+                    <div style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
+                      {pendingQuestions[0].context}
+                    </div>
+                  )}
+                </div>
+
+                {pendingQuestions[0].options && pendingQuestions[0].options.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {pendingQuestions[0].options.map((option, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleQuestionAnswer(option)}
+                        disabled={queryLoading}
+                        className="btn-secondary"
+                        style={{
+                          padding: '8px 16px',
+                          fontSize: '14px',
+                          borderRadius: '8px'
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Your answer..."
+                      className="input"
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.target.value.trim()) {
+                          handleQuestionAnswer(e.target.value);
+                          e.target.value = '';
+                        }
+                      }}
+                      disabled={queryLoading}
+                    />
+                    <button
+                      onClick={(e) => {
+                        const input = e.target.previousSibling;
+                        if (input.value.trim()) {
+                          handleQuestionAnswer(input.value);
+                          input.value = '';
+                        }
+                      }}
+                      disabled={queryLoading}
+                      className="btn-primary"
+                      style={{ padding: '8px 16px' }}
+                    >
+                      <Send size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -42,6 +42,16 @@ class PendingConfirmation(BaseModel):
     expires_at: Optional[datetime] = Field(None, description="When this confirmation expires")
 
 
+class AgentQuestion(BaseModel):
+    """Represents a question the agent asks the user during reasoning."""
+    question_id: str = Field(..., description="Unique ID for this question")
+    question: str = Field(..., description="The question to ask the user")
+    context: str = Field(..., description="Why the agent needs this information")
+    options: Optional[List[str]] = Field(None, description="Multiple choice options if applicable")
+    is_required: bool = Field(default=True, description="Whether answering is required to continue")
+    conversation_id: str = Field(..., description="Conversation this question belongs to")
+
+
 class AgentResponse(BaseModel):
     """Response from agent execution."""
     answer: str = Field(..., description="Final answer or current status message")
@@ -52,6 +62,11 @@ class AgentResponse(BaseModel):
         description="Tool executions awaiting user confirmation"
     )
     requires_confirmation: bool = Field(default=False, description="Whether user confirmation is needed")
+    pending_questions: List[AgentQuestion] = Field(
+        default_factory=list,
+        description="Questions the agent needs answered to continue"
+    )
+    requires_user_input: bool = Field(default=False, description="Whether agent is waiting for user input")
     is_complete: bool = Field(default=True, description="Whether agent has finished processing")
     conversation_id: Optional[str] = Field(None, description="Conversation ID")
     message_id: Optional[str] = Field(None, description="Message ID if saved")
