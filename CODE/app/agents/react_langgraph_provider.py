@@ -1,5 +1,6 @@
 """ReAct-based LangGraph agent using create_react_agent."""
 
+import asyncio
 import logging
 from typing import Dict, Any, Optional
 from langchain_core.tools import tool
@@ -10,6 +11,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.db.models import UserInDB
 from app.tools.http_executor import HTTPToolExecutor
 from app.agents.base import AgentProvider, AgentResponse, AgentStep
+from app.agents.plan_generator import generate_study_plan
 
 logger = logging.getLogger(__name__)
 
@@ -96,18 +98,21 @@ Do not invent data - always use tool results."""
             return result.result
 
         @tool
-        async def get_student_schooling(include_gpa: bool = True) -> dict:
-            """Get student's academic transcript with completed courses and grades.
+        async def get_completed_courses() -> dict:
+            """Get student's COMPLETED courses with final grades and GPA.
 
             Use this when the user asks about:
-            - "What courses am I taking?" / "que materias estoy cursando?"
-            - "What have I completed?" / "materias completadas"
-            - "My grades" / "mis calificaciones"
-            - "My GPA" / "mi promedio"
-            - "My academic record" / "mi historial académico"
+            - Completed courses, passed courses, finished courses
+            - Final grades, marks, scores
+            - GPA, grade point average, academic average
+            - Which courses make up the GPA
+            - Earned credits
+
+            Returns ONLY courses that have been fully completed with final grades.
+            These courses count toward GPA calculation.
 
             Returns:
-                Dict with completed_courses, in_progress_courses, total_credits, and GPA
+                Dict with completed_courses list, total_credits_earned, gpa, course_count
             """
             # Get student degree first
             degree_result = await self.tool_executor.execute(
@@ -136,7 +141,65 @@ Do not invent data - always use tool results."""
             if result.error:
                 return {"error": result.error}
 
-            return result.result
+            # Return only completed courses data
+            data = result.result
+            return {
+                "completed_courses": data.get("schooling_records", []),
+                "total_credits_earned": data.get("total_credits", 0),
+                "gpa": data.get("gpa", 0.0),
+                "course_count": len(data.get("schooling_records", []))
+            }
+
+        @tool
+        async def get_current_courses() -> dict:
+            """Get student's CURRENT in-progress courses (currently enrolled).
+
+            Use this when the user asks about:
+            - Current courses, ongoing courses, courses in progress
+            - What they are currently taking or enrolled in
+            - Active enrollments this semester
+
+            Returns ONLY courses currently being taken.
+            These do NOT have final grades yet and do NOT count toward current GPA.
+
+            Returns:
+                Dict with in_progress_courses list, course_count, note
+            """
+            # Get student degree first
+            degree_result = await self.tool_executor.execute(
+                tool_name="get_student_degree",
+                parameters={},
+                user=self._current_user
+            )
+
+            if degree_result.error:
+                return {"error": "Could not retrieve student degree"}
+
+            degree_id = degree_result.result.get("degree_id")
+            if not degree_id:
+                return {"error": "Student not enrolled in a degree program"}
+
+            # Get schooling records
+            result = await self.tool_executor.execute(
+                tool_name="get_student_schooling",
+                parameters={
+                    "student_id": str(self._current_user.id),
+                    "degree_id": degree_id
+                },
+                user=self._current_user
+            )
+
+            if result.error:
+                return {"error": result.error}
+
+            # Return only in-progress courses data
+            data = result.result
+            in_progress = data.get("in_progress_subjects", [])
+            return {
+                "in_progress_courses": in_progress,
+                "course_count": len(in_progress),
+                "note": "These courses do not yet have final grades and do not affect current GPA"
+            }
 
         @tool
         async def get_available_courses() -> dict:
@@ -264,15 +327,17 @@ Do not invent data - always use tool results."""
 
         @tool
         async def get_student_plan() -> dict:
-            """Get the student's personalized study plan.
+            """Get the student's EXISTING study plan (read-only).
 
-            Use this when the user asks about:
-            - "My study plan" / "mi plan de estudios"
-            - "Semester schedule" / "horario del semestre"
-            - "My plan" / "mi planificación"
+            Use this ONLY when the user asks to VIEW or SEE their existing plan:
+            - "Show me my study plan"
+            - "What's my current plan?"
+            - "View my semester schedule"
+
+            DO NOT use this to CREATE a new plan - use create_study_plan instead.
 
             Returns:
-                Dict with personalized study plan
+                Dict with existing study plan or empty if none exists
             """
             result = await self.tool_executor.execute(
                 tool_name="get_student_plan",
@@ -311,13 +376,154 @@ Do not invent data - always use tool results."""
 
             return result.result
 
+        @tool
+        async def create_study_plan(
+            target_graduation_semester: str = None,
+            credits_per_semester_preference: int = 15,
+            include_electives: bool = True,
+            prioritize_early_graduation: bool = False
+        ) -> dict:
+            """Generate a NEW complete semester-by-semester study plan to graduation.
+
+            Creates a detailed plan with specific courses for each future semester,
+            ensuring all prerequisites are met and credit loads are realistic.
+
+            Use this when user asks to CREATE, GENERATE, or MAKE a plan:
+            - "Create my study plan"
+            - "Generate a study plan"
+            - "Make me a study plan"
+            - "Plan my remaining semesters"
+            - "When can I graduate?"
+            - "Generate my career plan"
+            - "Make a graduation plan"
+
+            IMPORTANT:
+            - Only uses real courses from the curriculum. Never invents courses.
+            - This CREATES a new plan and saves it to the database.
+            - User can then view it in the Study Plan tab of the UI.
+
+            Args:
+                target_graduation_semester: Target graduation (e.g., "2027-2") or None for auto
+                credits_per_semester_preference: Preferred credits per semester (12-20, default 15)
+                include_electives: Whether to include elective courses (default True)
+                prioritize_early_graduation: Maximize credits to graduate faster (default False)
+
+            Returns:
+                Dict with complete study plan or error if generation fails
+            """
+            # Step 1: Get student's degree
+            degree_result = await self.tool_executor.execute(
+                tool_name="get_student_degree",
+                parameters={},
+                user=self._current_user
+            )
+
+            if degree_result.error:
+                return {
+                    "success": False,
+                    "error": "Could not retrieve student degree",
+                    "details": degree_result.error
+                }
+
+            degree_id = degree_result.result.get("degree_id")
+
+            # Step 2: Fetch schooling and curriculum in parallel
+            schooling_task = self.tool_executor.execute(
+                tool_name="get_student_schooling",
+                parameters={"student_id": str(self._current_user.id), "degree_id": degree_id},
+                user=self._current_user
+            )
+
+            curriculum_task = self.tool_executor.execute(
+                tool_name="get_degree_curriculum",
+                parameters={"degree_id": degree_id},
+                user=self._current_user
+            )
+
+            schooling_result, curriculum_result = await asyncio.gather(
+                schooling_task, curriculum_task
+            )
+
+            if schooling_result.error:
+                return {
+                    "success": False,
+                    "error": "Could not retrieve academic history",
+                    "details": schooling_result.error
+                }
+
+            if curriculum_result.error:
+                return {
+                    "success": False,
+                    "error": "Could not retrieve degree curriculum",
+                    "details": curriculum_result.error
+                }
+
+            # Step 3: Transform schooling data to expected format
+            # AGENT_API returns 'schooling_records' but plan_generator expects 'completed_subjects'
+            schooling_data = schooling_result.result.copy()
+            schooling_data["completed_subjects"] = schooling_data.pop("schooling_records", [])
+            # in_progress_subjects is already correct
+            # Add current_semester if not present
+            if "current_semester" not in schooling_data:
+                schooling_data["current_semester"] = "2025-1"
+
+            # Step 4: Generate plan using pure Python algorithm
+            plan_result = generate_study_plan(
+                schooling=schooling_data,
+                curriculum=curriculum_result.result,
+                target_graduation=target_graduation_semester,
+                credits_preference=credits_per_semester_preference,
+                include_electives=include_electives,
+                prioritize_early=prioritize_early_graduation
+            )
+
+            if not plan_result.get("success"):
+                return plan_result
+
+            # Step 5: Save plan to database
+            update_result = await self.tool_executor.execute(
+                tool_name="update_student_plan",
+                parameters={
+                    "student_id": self._current_user.auth0_id,
+                    "degree_id": degree_id,
+                    "plan_data": {
+                        "semester_plans": plan_result["semester_plans"],
+                        "plan_name": "AI-Generated Plan"
+                    }
+                },
+                user=self._current_user
+            )
+
+            if update_result.error:
+                return {
+                    "success": False,
+                    "error": f"Plan generated but failed to save: {update_result.error}",
+                    "plan_details": plan_result
+                }
+
+            # Return complete result with plan details
+            return {
+                "success": True,
+                "plan_created": True,
+                "plan_saved": True,
+                "degree_id": degree_id,
+                "total_semesters": plan_result["total_semesters"],
+                "total_remaining_credits": plan_result["total_remaining_credits"],
+                "estimated_graduation": plan_result["estimated_graduation"],
+                "semester_plans": plan_result["semester_plans"],
+                "summary": plan_result["summary"],
+                "warnings": plan_result.get("warnings", [])
+            }
+
         return [
             search_documents,
-            get_student_schooling,
+            get_completed_courses,
+            get_current_courses,
             get_available_courses,
             get_degree_curriculum,
             get_student_plan,
             web_search,
+            create_study_plan,
         ]
 
     async def execute_query(
@@ -431,9 +637,15 @@ Do not invent data - always use tool results."""
                 safety=ToolSafety.SAFE
             ),
             Tool(
-                name="get_student_schooling",
-                description="Get student's academic transcript with completed courses and grades",
-                parameters_schema={"type": "object", "properties": {"include_gpa": {"type": "boolean"}}},
+                name="get_completed_courses",
+                description="Get student's completed courses with final grades and GPA",
+                parameters_schema={"type": "object", "properties": {}},
+                safety=ToolSafety.SAFE
+            ),
+            Tool(
+                name="get_current_courses",
+                description="Get student's current in-progress courses (currently enrolled)",
+                parameters_schema={"type": "object", "properties": {}},
                 safety=ToolSafety.SAFE
             ),
             Tool(

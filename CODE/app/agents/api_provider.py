@@ -323,7 +323,7 @@ def create_agent_provider(
     """Create agent provider based on configuration.
 
     Args:
-        provider_type: "react" or "api"
+        provider_type: "react", "instructor", or "api"
         api_url: Agent API URL (for tool execution) or External API URL (for API provider)
         api_key: External API key (for API provider only)
         **kwargs: Additional configuration
@@ -331,17 +331,30 @@ def create_agent_provider(
     Returns:
         AgentProvider instance
 
+    Provider types:
+        - "react": ReAct-based LangGraph agent (simple, fast)
+        - "instructor": Instructor-enhanced ReAct with structured reasoning (advanced)
+        - "api": External agent API (stub implementation)
+
     Note:
         Legacy providers ("local", "langgraph") have been removed.
-        Use "react" for the recommended ReAct-based LangGraph agent.
     """
     from app.agents.react_langgraph_provider import ReActLangGraphProvider
+    from app.agents.instructor_react_provider import InstructorReActProvider
     from app.tools.http_executor import HTTPToolExecutor
 
     if provider_type == "react":
         # ReAct agent uses HTTPToolExecutor for agent API calls
         tool_executor = HTTPToolExecutor(agent_api_url=api_url)
         return ReActLangGraphProvider(
+            tool_executor=tool_executor,
+            **kwargs
+        )
+
+    elif provider_type == "instructor":
+        # Instructor-enhanced ReAct agent with structured iterative reasoning
+        tool_executor = HTTPToolExecutor(agent_api_url=api_url)
+        return InstructorReActProvider(
             tool_executor=tool_executor,
             **kwargs
         )
@@ -364,4 +377,4 @@ def create_agent_provider(
         )
 
     else:
-        raise ValueError(f"Unknown agent provider type: {provider_type}")
+        raise ValueError(f"Unknown agent provider type: {provider_type}. Use 'react', 'instructor', or 'api'")
