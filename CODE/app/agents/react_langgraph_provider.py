@@ -34,6 +34,7 @@ class ReActLangGraphProvider(AgentProvider):
             model=settings.ollama_model,
             base_url=settings.ollama_base_url,
             temperature=0.7,
+            format="",  # Explicitly disable JSON mode to allow tool calling
         )
 
         # Store user for tool access
@@ -53,22 +54,29 @@ Your capabilities:
 - Search the web for current information
 - Provide study planning recommendations
 
-Guidelines:
-- Always respond in the SAME LANGUAGE as the user's question
-- Use tools to get accurate information before answering
-- Only mention courses/data explicitly returned by tools
-- Be conversational, helpful, and supportive
-- If prerequisites are mentioned, they have been validated by the system
+CRITICAL RULES - YOU MUST FOLLOW THESE:
+1. ALWAYS use tools to get student data - NEVER guess or make up information
+2. When asked about student's courses, grades, or plans - YOU MUST call the appropriate tool
+3. Do NOT ask clarifying questions if the query is clear - just call the tool
+4. Only mention courses/data explicitly returned by tools
+5. Always respond in the SAME LANGUAGE as the user's question
 
-Do not invent data - always use tool results."""
+Examples:
+- "What courses have I completed?" -> Call get_completed_courses immediately
+- "What courses can I take?" -> Call get_available_courses immediately
+- "Generate a study plan" -> Call create_study_plan immediately
+
+Do not invent data - always use tool results. DO NOT respond without calling tools first when student data is needed."""
 
         # Create agent without checkpointing for now
         # TODO: Add persistent checkpointing for conversation memory
+        logger.info(f"Creating ReAct agent with {len(tools)} tools for model {settings.ollama_model}")
         self.agent = create_react_agent(
             model=llm,
             tools=tools,
             prompt=system_prompt
         )
+        logger.info("ReAct agent created successfully")
 
     def _create_tools(self):
         """Create LangChain tools with access to user context."""

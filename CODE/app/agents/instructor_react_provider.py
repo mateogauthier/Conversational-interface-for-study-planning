@@ -57,7 +57,7 @@ class QueryPlan(BaseModel):
 
     execution_steps: List[str] = Field(
         default_factory=list,
-        description="Step-by-step plan for execution"
+        description="Step-by-step plan for execution (simple string descriptions, NOT objects)"
     )
 
     expected_challenges: List[str] = Field(
@@ -182,9 +182,11 @@ class InstructorReActProvider(AgentProvider):
         )
 
         # Wrap with Instructor
+        # Use MD_JSON mode which is designed specifically for local/open-source LLMs
+        # This mode wraps JSON in markdown code blocks which works better with Ollama
         return instructor.from_openai(
             base_client,
-            mode=instructor.Mode.JSON
+            mode=instructor.Mode.MD_JSON
         )
 
     async def _plan_query(self, query: str, user: UserInDB) -> QueryPlan:
@@ -218,15 +220,24 @@ Create a detailed plan for answering this query. Think step-by-step:
 3. Which tools should we use and in what order?
 4. What could go wrong?
 
-IMPORTANT: If the query is ambiguous or missing critical information, set clarification_needed with a specific question to ask the user. For example:
-- If user asks for "a study plan" but doesn't specify graduation date or credit preferences
-- If user's intent could mean multiple different things
-- If you need to know user preferences to give a good answer
+CRITICAL RULES:
+- Set can_answer_now=True ONLY if you can answer from general knowledge WITHOUT any student-specific data
+- Set can_answer_now=False if you need ANY tool to get student information (courses, grades, plans, etc.)
+- If the query asks about student's courses, grades, plans, or enrollment - you MUST use tools (can_answer_now=False)
+- If the query is ambiguous or missing critical information, set clarification_needed with a specific question
 
-Ask clarifying questions to provide the best possible help."""
+Examples:
+- "What courses can I enroll in?" -> can_answer_now=False (needs get_available_courses)
+- "What courses have I completed?" -> can_answer_now=False (needs get_completed_courses)
+- "What is the capital of France?" -> can_answer_now=True (general knowledge)
+
+FORMAT REQUIREMENT:
+- execution_steps MUST be a list of STRINGS like ["Step 1", "Step 2"]
+- Do NOT use objects/dictionaries in execution_steps
+- Example: ["Call get_completed_courses", "Call create_study_plan", "Return the plan"]"""
 
         try:
-            # Use Instructor to get structured plan
+            # Use Instructor to get structured plan (single attempt only)
             from app.core.config import get_settings
             settings = get_settings()
 
@@ -237,22 +248,25 @@ Ask clarifying questions to provide the best possible help."""
                     {"role": "user", "content": planning_prompt}
                 ],
                 response_model=QueryPlan,
-                temperature=0.3
+                temperature=0.3,
+                max_retries=0  # Don't retry - fail fast and use ReAct directly
             )
 
+            logger.info(f"Structured planning succeeded: {plan.user_intent}")
             return plan
 
         except Exception as e:
-            logger.warning(f"Structured planning failed, using fallback: {e}")
-            # Fallback: simple plan
+            logger.info(f"Structured planning not available, using ReAct directly (this is normal)")
+            # Fallback: Skip complex planning, let ReAct handle everything
+            # This is actually BETTER for tool execution since ReAct's native function calling is more reliable
             return QueryPlan(
                 user_intent=f"Answer: {query}",
                 strategy=ReasoningStrategy.MULTI_TOOL_SEQUENTIAL,
-                required_tools=["get_student_schooling"],
-                execution_steps=["Execute available tools", "Synthesize answer"],
+                required_tools=[],  # Let ReAct figure out which tools to use
+                execution_steps=[],  # No explicit steps - ReAct will reason autonomously
                 expected_challenges=[],
                 can_answer_now=False,
-                reasoning="Fallback plan - execute tools and synthesize"
+                reasoning="Let ReAct agent handle tool selection and execution autonomously"
             )
 
     async def _execute_iteration(
@@ -272,9 +286,22 @@ Ask clarifying questions to provide the best possible help."""
             for prev in previous_results:
                 context += f"- Iteration {prev.iteration_number}: {prev.findings}\n"
 
+        # Build enhanced query - if we have a plan, add guidance; otherwise let ReAct work naturally
+        if plan.execution_steps or plan.required_tools:
+            # We have a structured plan - provide guidance
+            enhanced_query = f"""User question: {query}
+
+Required actions:
+{chr(10).join([f"- {step}" for step in plan.execution_steps]) if plan.execution_steps else f"Use these tools to answer: {', '.join(plan.required_tools)}"}
+
+IMPORTANT: You MUST use the tools mentioned above to gather the actual student data. Do not make up or guess answers.{context}"""
+        else:
+            # No structured plan - let ReAct work autonomously with its native tool calling
+            enhanced_query = f"{query}{context}"
+
         # Execute ReAct agent
         agent_response = await self.base_agent.execute_query(
-            query=f"{query}\n\nPlan: {plan.reasoning}\nCurrent iteration: {iteration}{context}",
+            query=enhanced_query,
             user=user,
             conversation_id=f"instructor_{user.id}_{iteration}"
         )
@@ -291,11 +318,26 @@ Ask clarifying questions to provide the best possible help."""
                     confidence=0.8
                 ))
 
+        # Check if tools were actually called when they should have been
+        # Only mark as insufficient if:
+        # 1. No tools were called AND
+        # 2. The plan explicitly said we can't answer without tools (can_answer_now=False) AND
+        # 3. The plan specified tools to use OR this is a query that obviously needs data
+        needs_tools = plan.can_answer_now == False and (plan.required_tools or plan.execution_steps)
+
+        if not tools_used and needs_tools:
+            logger.warning(f"No tools were called but plan indicated tools were needed. LLM may have hallucinated.")
+            # Mark as insufficient so we retry
+            is_sufficient = False
+        else:
+            # Either tools were called, or they weren't needed
+            is_sufficient = True
+
         return IterationResult(
             iteration_number=iteration,
             findings=agent_response.answer,
             tools_used=tools_used,
-            is_sufficient=True,  # For now, assume one iteration is enough
+            is_sufficient=is_sufficient,
             partial_answer=agent_response.answer
         )
 
@@ -459,7 +501,8 @@ Be honest about confidence and limitations."""
                     iterations_completed=0
                 )
 
-            # Step 2: Execute iterations
+            # Step 2: Execute iterations with retry logic for tool calling failures
+            tool_calling_failed_count = 0
             for iteration in range(1, self.max_iterations + 1):
                 agent_steps.append(AgentStep(
                     step_number=len(agent_steps) + 1,
@@ -477,10 +520,48 @@ Be honest about confidence and limitations."""
 
                 iteration_results.append(iteration_result)
 
+                # Check if tools were called when they should have been
+                if not iteration_result.is_sufficient:
+                    tool_calling_failed_count += 1
+                    logger.warning(f"Tool calling may have failed on iteration {iteration} (failure count: {tool_calling_failed_count})")
+
+                    agent_steps.append(AgentStep(
+                        step_number=len(agent_steps) + 1,
+                        step_type="result",
+                        content=f"⚠️ Iteration {iteration}: LLM may not have called tools properly. Retrying..."
+                    ))
+
+                    # If we've failed too many times, give up and explain to user
+                    if tool_calling_failed_count >= 2:
+                        logger.error("Tool calling failed multiple times. Returning explanation to user.")
+                        agent_steps.append(AgentStep(
+                            step_number=len(agent_steps) + 1,
+                            step_type="error",
+                            content="Tool calling failed after multiple retries"
+                        ))
+
+                        return AgentResponse(
+                            answer=f"Lo siento, estoy teniendo problemas técnicos para acceder a tu información académica. "
+                                   f"El modelo de IA (Llama 3.1) no está llamando correctamente a las herramientas necesarias para obtener tus datos reales. "
+                                   f"\n\n**Sugerencias:**\n"
+                                   f"- Intenta reformular tu pregunta de manera más específica\n"
+                                   f"- O contacta al administrador para revisar la configuración del sistema\n"
+                                   f"\n\n*Nota técnica: El LLM generó una respuesta pero no utilizó las herramientas de base de datos para verificar tu información real.*",
+                            agent_steps=agent_steps,
+                            is_complete=False,
+                            iterations_completed=iteration,
+                            max_iterations=self.max_iterations,
+                            conversation_id=conversation_id
+                        )
+
+                    # Continue to next iteration to retry
+                    continue
+
+                # Success - tools were called
                 agent_steps.append(AgentStep(
                     step_number=len(agent_steps) + 1,
                     step_type="result",
-                    content=f"✓ Iteration {iteration} complete:\n- Tools used: {', '.join([t.tool_name for t in iteration_result.tools_used])}\n- Findings: {iteration_result.findings[:200]}..."
+                    content=f"✓ Iteration {iteration} complete:\n- Tools used: {', '.join([t.tool_name for t in iteration_result.tools_used]) if iteration_result.tools_used else 'none'}\n- Findings: {iteration_result.findings[:200]}..."
                 ))
 
                 # Check if we have enough information
