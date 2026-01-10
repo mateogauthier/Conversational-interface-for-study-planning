@@ -270,16 +270,21 @@ class ConversationService:
         Returns:
             List of conversation documents
         """
-        cursor = self.conversations_collection.find(
-            {"auth0_id": user_auth0_id}
-        ).sort("updated_at", -1).skip(skip).limit(limit)
+        query = {"auth0_id": user_auth0_id}
+        logger.info(f"Querying conversations with: {query}")
+
+        cursor = self.conversations_collection.find(query).sort("updated_at", -1).skip(skip).limit(limit)
 
         conversations = await cursor.to_list(length=limit)
+        logger.info(f"Raw conversations found: {len(conversations)}")
+        if conversations:
+            logger.info(f"First raw conversation: {conversations[0]}")
 
         # Convert ObjectIds to strings
         for conv in conversations:
             conv["_id"] = str(conv["_id"])
 
+        logger.info(f"Returning {len(conversations)} conversations")
         return conversations
 
     async def delete_conversation(

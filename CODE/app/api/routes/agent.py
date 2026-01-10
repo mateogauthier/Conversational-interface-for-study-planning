@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import (
     get_current_user,
-    get_app_settings
+    get_app_settings,
+    get_conversation_service_dep,
+    get_file_service_dep
 )
 from app.db.models import UserInDB
 from app.core.config import Settings
@@ -19,6 +21,8 @@ from app.models.responses import (
 )
 from app.agents.base import AgentProvider, AgentResponse
 from app.core.exceptions import NotFoundHTTPException
+from app.services.conversation_service import ConversationService
+from app.services.file_service import FileService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -47,7 +51,9 @@ def get_agent_provider() -> AgentProvider:
 async def agent_query(
     request: AgentQueryRequest,
     current_user: UserInDB = Depends(get_current_user),
-    settings: Settings = Depends(get_app_settings)
+    settings: Settings = Depends(get_app_settings),
+    conversation_service: ConversationService = Depends(get_conversation_service_dep),
+    file_service: FileService = Depends(get_file_service_dep)
 ):
     """
     Execute a query using the agent with tool execution capabilities.
@@ -82,11 +88,33 @@ async def agent_query(
 
         logger.info(f"Agent query from user {current_user.auth0_id}: {request.prompt}")
 
+        # Handle conversation persistence
+        conversation_id = request.conversation_id
+        if conversation_id:
+            # Load existing conversation history
+            conversation_history = await conversation_service.get_conversation_history(
+                conversation_id=conversation_id
+            )
+        else:
+            # Auto-create new conversation
+            conversation_id = await conversation_service.create_conversation(
+                user_id=str(current_user.id),
+                auth0_id=current_user.auth0_id,
+                first_message=request.prompt
+            )
+
+        # Save user message to conversation
+        user_message_id = await conversation_service.add_message(
+            conversation_id=conversation_id,
+            role="user",
+            content=request.prompt
+        )
+
         # Execute agent query
         agent_response: AgentResponse = await agent_provider.execute_query(
             query=request.prompt,
             user=current_user,
-            conversation_id=request.conversation_id,
+            conversation_id=conversation_id,
             auto_approve_tools=request.auto_approve_tools,
             # Pass through RAG parameters
             n_results=request.n_results,
@@ -99,6 +127,33 @@ async def agent_query(
             answer_to_question=request.answer_to_question,
             original_query=request.prompt
         )
+
+        # Save assistant message to conversation (if not pending confirmation)
+        if not agent_response.requires_confirmation:
+            # Extract source files from the agent response
+            source_files = agent_response.sources or []
+
+            # Track file usage (once per file per conversation)
+            files_already_used = await conversation_service.get_files_used_in_conversation(conversation_id)
+            for filename in source_files:
+                if filename not in files_already_used:
+                    await file_service.track_file_usage(filename)
+
+            # Save assistant message with source files
+            assistant_message_id = await conversation_service.add_message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=agent_response.answer,
+                model_used=agent_response.model_used,
+                source_files=source_files
+            )
+        else:
+            # Don't save assistant message yet if confirmation is pending
+            assistant_message_id = None
+
+        # Override conversation_id and message_id in response
+        agent_response.conversation_id = conversation_id
+        agent_response.message_id = assistant_message_id
 
         # Convert to API response model
         return _map_agent_response(agent_response, request.prompt)

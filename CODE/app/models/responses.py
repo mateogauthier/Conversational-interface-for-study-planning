@@ -170,7 +170,8 @@ class ConversationInfo(BaseModel):
     """Conversation information model."""
     model_config = ConfigDict(
         populate_by_name=True,
-        json_schema_serialization_defaults_required=True
+        json_schema_serialization_defaults_required=True,
+        by_alias=True  # Serialize using alias (_id) instead of field name (id)
     )
 
     id: str = Field(..., description="Conversation ID", alias="_id")
@@ -182,7 +183,10 @@ class ConversationInfo(BaseModel):
 
 class MessageInfo(BaseModel):
     """Message information model."""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        by_alias=True  # Serialize using alias (_id) instead of field name (id)
+    )
 
     id: str = Field(..., description="Message ID", alias="_id")
     role: str = Field(..., description="Message role (user or assistant)")
@@ -196,12 +200,16 @@ class MessageInfo(BaseModel):
 
 class ConversationListResponse(BaseResponse):
     """List of conversations response."""
+    model_config = ConfigDict(by_alias=True)
+
     conversations: List[ConversationInfo] = Field(..., description="List of user's conversations")
     total: int = Field(..., description="Total number of conversations")
 
 
 class ConversationDetailResponse(BaseResponse):
     """Detailed conversation with messages response."""
+    model_config = ConfigDict(by_alias=True)
+
     conversation: ConversationInfo = Field(..., description="Conversation information")
     messages: List[MessageInfo] = Field(..., description="List of messages in conversation")
 

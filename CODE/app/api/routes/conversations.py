@@ -63,9 +63,12 @@ async def list_conversations(
         ]
 
         # Debug logging to verify serialization
+        logger.info(f"Found {len(conversation_infos)} conversations for user {current_user.auth0_id}")
         if conversation_infos:
             logger.info(f"First conversation ID: {conversation_infos[0].id}")
             logger.info(f"First conversation dict: {conversation_infos[0].model_dump()}")
+            # Also log the serialized JSON to see what actually gets sent
+            logger.info(f"First conversation serialized: {conversation_infos[0].model_dump(by_alias=True)}")
 
         return ConversationListResponse(
             message="Conversations retrieved successfully",
