@@ -36,15 +36,12 @@ class LLMService:
     def _get_instructor_client(self):
         """Get or create Instructor client for structured outputs."""
         if self._instructor_client is None:
-            # Create Ollama async client
             from openai import AsyncOpenAI
 
-            # Ollama has OpenAI-compatible API
             ollama_client = AsyncOpenAI(
                 base_url=f"{self.base_url}/v1",
-                api_key="ollama",  # Ollama doesn't require a real API key
+                api_key="ollama",
             )
-            # Wrap with Instructor using JSON mode (more compatible than tool calling)
             self._instructor_client = instructor.patch(
                 ollama_client,
                 mode=instructor.Mode.JSON
@@ -176,23 +173,18 @@ class LLMService:
         conversation_history: Optional[List[Dict[str, str]]] = None,
         enable_artifacts: bool = True
     ) -> Dict[str, Any]:
-        """Generate a response with provided context and optional conversation history using Instructor."""
+        """Generate a response with provided context and optional conversation history."""
         from app.core.config import get_settings
         settings = get_settings()
 
-        # Truncate context if too long to prevent timeouts
         max_context_length = settings.max_context_length
         if len(context) > max_context_length:
             context = context[:max_context_length] + "..."
             logger.info(f"Context truncated to {max_context_length} characters")
 
-        # Determine language instruction
         language_instruction = self._get_language_instruction(prompt, language, settings)
-
-        # Get role-based system prompt
         role_prompt = self._get_academic_advisor_prompt(language)
 
-        # Combine custom instructions with language instruction and role
         all_instructions = [role_prompt, language_instruction]
         if instructions:
             all_instructions.append(instructions)
@@ -201,7 +193,6 @@ class LLMService:
 
         combined_instructions = " ".join(all_instructions)
 
-        # Build conversation history section if provided
         history_section = ""
         if conversation_history and len(conversation_history) > 0:
             history_lines = ["Previous conversation:"]
@@ -210,10 +201,8 @@ class LLMService:
                 history_lines.append(f"{role_label}: {msg['content']}")
             history_section = "\n".join(history_lines) + "\n\n"
 
-        # Determine model to use
         model = model or self.default_model
 
-        # Ensure model is available
         if not await self.is_available():
             raise LLMNotAvailableHTTPException("Ollama service is not available")
 
@@ -224,18 +213,14 @@ class LLMService:
                 raise LLMException(f"Default model {self.default_model} is not available")
 
         try:
-            # MARKDOWN-FIRST APPROACH (Client-side parsing)
-            # Generate pure markdown - let frontend extract artifacts
             markdown_instruction = self._get_markdown_generation_instruction(language)
 
-            # Add hallucination prevention instruction
             factual_instruction = ""
             if not context or context.strip() in ["", "No relevant context found.", "No relevant context found"]:
                 factual_instruction = "\n\n**IMPORTANT**: No document context is available. Only answer with general knowledge. If you don't know the answer, say so explicitly - DO NOT make up specific information like addresses, names, or facts."
             else:
                 factual_instruction = "\n\n**IMPORTANT**: Base your answer ONLY on the provided context from documents. If the context doesn't contain the information needed to answer the question, say so clearly - DO NOT fabricate information."
 
-            # Create enhanced prompt with markdown instructions
             enhanced_prompt = f"""{combined_instructions}
 
 {markdown_instruction}
@@ -247,19 +232,22 @@ Current question: {prompt}
 
 Answer:"""
 
-            # Generate regular response (markdown)
             result = await self.generate_response(enhanced_prompt, model)
 
-            # Backend sends empty artifacts array - client will extract them
+            result["response"] = self._enhance_conversational_tone(
+                response=result["response"],
+                user_query=prompt,
+                context_available=(context and context.strip() not in ["", "No relevant context found.", "No relevant context found"])
+            )
+
             result["artifacts"] = []
 
-            logger.info(f"Generated markdown response - client will extract artifacts")
+            logger.info(f"Generated markdown response with conversational enhancement")
 
             return result
 
         except Exception as e:
             logger.error(f"Error in generate_with_context: {str(e)}")
-            # Fallback to regex-based extraction
             logger.info("Falling back to regex-based artifact extraction")
             enhanced_prompt = f"""{history_section}Context from documents: {context}
 
@@ -282,70 +270,69 @@ Answer:"""
             return result
 
     def _get_academic_advisor_prompt(self, language: Optional[str]) -> str:
-        """Generate academic advisor system prompt based on language."""
-        is_spanish = language == "spanish" or language == "auto"
+        """Generate academic advisor system prompt."""
+        return """You are a warm, empathetic academic advisor - like a career counselor who genuinely cares about students.
 
-        if is_spanish:
-            return """Eres un asesor académico amigable y empático de la universidad. Tu objetivo principal es ayudar al estudiante a:
+**YOUR PERSONALITY:**
+- Friendly and conversational (like talking to a trusted friend)
+- Empathetic and supportive (acknowledge feelings before problem-solving)
+- Encouraging and positive (celebrate wins, offer hope during challenges)
+- Patient and clear (explain complex prerequisites step-by-step)
 
-1. **Planificar su progreso académico**: Ayúdalo a entender qué materias ha completado, cuáles le faltan, y cómo puede organizarse para terminar su carrera.
+**CONVERSATION-FIRST APPROACH:**
 
-2. **Tomar decisiones informadas**: Oriéntalo sobre qué materias tomar próximamente, cuántas puede manejar según su historial, y cómo balancear su carga académica.
+1. **GREETINGS & SMALL TALK - NO TOOLS NEEDED:**
+   - "Hello", "Hi", "How are you", "Thank you", "Goodbye"
+   - Respond warmly: "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?"
+   - Do NOT call tools for simple greetings
 
-3. **Guiar su carrera profesional**: Ayúdalo a identificar sus fortalezas académicas (materias con mejores notas), áreas de mejora, y cómo sus decisiones actuales impactan su futuro profesional.
+2. **EMOTIONAL SUPPORT - EMPATHY FIRST, THEN TOOLS:**
+   - If student seems stressed/worried/overwhelmed:
+     * Start: "I understand this feels overwhelming..."
+     * Then: Call tools to provide practical help
+   - If student is confused:
+     * Start: "Let's break this down together..."
+     * Then: Use tools + diagrams to clarify
+   - If student is excited:
+     * Start: "I love your enthusiasm!"
+     * Then: Support their goals with data
 
-4. **Motivar y apoyar**: Sé positivo, reconoce sus logros, y ofrece consejos prácticos cuando enfrente desafíos.
+3. **INFORMATION QUERIES - USE TOOLS WITH NARRATIVE:**
+   - "What courses have I completed?" → Call get_completed_courses
+   - BUT frame it: "Let me pull up your transcript... [tool results] → You've completed 8 courses with a 3.4 GPA - excellent work!"
+   - NEVER say "Tool returned..." - integrate data naturally
 
-**Estilo de comunicación:**
-- Sé amigable, natural y conversacional (como hablarías con un amigo)
-- Usa un tono cálido y empático
-- Personaliza tus respuestas según el contexto del estudiante
-- Celebra sus éxitos y ofrece apoyo en los desafíos
-- Sé específico y práctico en tus recomendaciones
-- Usa visualizaciones (tablas, gráficas) cuando ayuden a clarificar información
+4. **PLANNING QUERIES - INTERACTIVE MULTI-TURN:**
+   - "Help me plan next semester"
+   - Ask clarifying questions:
+     * "What's your priority this semester - lighter workload or advancing quickly?"
+     * "Any specific courses you're interested in?"
+   - Present options, get confirmation, THEN use create_study_plan
 
-**Ejemplos de buen tono:**
-- ❌ "Según los datos, has aprobado 8 materias."
-- ✅ "¡Excelente! Ya has aprobado 8 materias. Estás haciendo un buen progreso en tu carrera."
+5. **REFLECTION QUERIES - NO NEW TOOLS:**
+   - "Why did you recommend this?"
+   - Explain reasoning from previous tool calls
+   - Show prerequisite logic, GPA considerations, etc.
 
-- ❌ "Tu promedio es 72%."
-- ✅ "Tu promedio actual es de 72%. Hay espacio para mejorar, y puedo ayudarte a identificar estrategias para subirlo."
+**RESPONSE STRUCTURE (ALWAYS FOLLOW):**
+1. ACKNOWLEDGMENT: "Great question!" / "I can help with that."
+2. MAIN CONTENT: Tool results woven into natural explanation
+3. CLOSING: Follow-up question OR encouragement OR next step
 
-- ❌ "Debes tomar Cálculo 3."
-- ✅ "Te recomiendo considerar Cálculo 3 para el próximo semestre, ya que completaste Cálculo 2 con un buen desempeño del 74%."
+**CRITICAL RULES:**
+- Respond in the SAME LANGUAGE as the user's question
+- Use tools when needed, but prioritize conversation quality
+- Never invent courses or data - only use tool results
+- If you don't have data, say so clearly and offer alternatives
 
-Recuerda: No eres solo una fuente de información, eres un mentor académico que genuinamente se preocupa por el éxito del estudiante."""
-
-        else:
-            return """You are a friendly and empathetic academic advisor at the university. Your main goal is to help students:
-
-1. **Plan their academic progress**: Help them understand which courses they've completed, what's remaining, and how to organize their path to graduation.
-
-2. **Make informed decisions**: Guide them on which courses to take next, how many they can handle based on their history, and how to balance their academic load.
-
-3. **Navigate their professional career**: Help them identify their academic strengths (courses with best grades), areas for improvement, and how their current decisions impact their professional future.
-
-4. **Motivate and support**: Be positive, recognize their achievements, and offer practical advice when facing challenges.
-
-**Communication style:**
-- Be friendly, natural, and conversational (like talking to a friend)
-- Use a warm and empathetic tone
-- Personalize your responses based on the student's context
-- Celebrate their successes and offer support during challenges
-- Be specific and practical in your recommendations
-- Use visualizations (tables, charts) when they help clarify information
-
-**Examples of good tone:**
-- ❌ "According to the data, you have passed 8 courses."
-- ✅ "Excellent! You've already passed 8 courses. You're making good progress in your degree."
+**Examples of structure:**
+- ❌ "You have passed 8 courses."
+- ✅ "Excellent! You've passed 8 courses with a 3.4 GPA - that's solid progress. Would you like help planning what's next?"
 
 - ❌ "Your average is 72%."
-- ✅ "Your current average is 72%. There's room for improvement, and I can help you identify strategies to raise it."
+- ✅ "I see your current average is 72%. There's room to grow, and I'm here to help. Which courses have you found most challenging?"
 
-- ❌ "You must take Calculus 3."
-- ✅ "I recommend considering Calculus 3 for next semester, since you completed Calculus 2 with a solid 74% performance."
-
-Remember: You're not just a source of information, you're an academic mentor who genuinely cares about the student's success."""
+Remember: You're not just information - you're a mentor who builds relationships and supports student success."""
 
     def _get_language_instruction(self, prompt: str, language: Optional[str], settings) -> str:
         """Generate appropriate language instruction based on preferences and detection."""
@@ -764,6 +751,44 @@ The client will automatically extract tables, code, and diagrams from markdown."
         logger.info(f"Extracted {len(artifacts)} artifact(s) from response")
 
         return clean_text, artifacts
+
+    def _enhance_conversational_tone(
+        self,
+        response: str,
+        user_query: str,
+        context_available: bool
+    ) -> str:
+        """Enhance response with conversational scaffolding if missing."""
+        if len(response) < 100:
+            return response
+
+        acknowledgments = ['great question', 'good question', 'i can help', 'let me help',
+                          'excellent', 'excelente', 'claro', 'perfecto']
+        has_acknowledgment = any(ack in response.lower()[:50] for ack in acknowledgments)
+
+        if not has_acknowledgment:
+            query_lower = user_query.lower()
+
+            if any(word in query_lower for word in ['worried', 'stressed', 'overwhelmed']):
+                opening = "I understand this can feel overwhelming. "
+            elif any(word in query_lower for word in ['confused', 'lost', 'don\'t understand']):
+                opening = "Let's break this down together. "
+            elif any(word in query_lower for word in ['excited', 'can\'t wait']):
+                opening = "I love your enthusiasm! "
+            else:
+                opening = "Great question! "
+
+            response = opening + response
+
+        ending_markers = ['?', 'keep it up', 'you\'re on track', 'next step',
+                         'anything else', 'help you', '¿']
+        has_closing = any(marker in response.lower()[-100:] for marker in ending_markers)
+
+        if not has_closing:
+            closing = " Is there anything else you'd like to know?"
+            response = response + closing
+
+        return response
 
     async def get_service_info(self) -> Dict[str, Any]:
         """Get information about the LLM service."""

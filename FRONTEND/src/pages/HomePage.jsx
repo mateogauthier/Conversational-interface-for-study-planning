@@ -591,6 +591,61 @@ function HomePage() {
               <p style={{ marginTop: '0.5rem', fontSize: '1rem', color: '#718096' }}>
                 {currentConversationId ? t('home.continueBelow') : t('home.startOrSelect')}
               </p>
+
+              {/* Quick-start conversation prompts */}
+              <div style={{
+                marginTop: '2rem',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                gap: '1rem',
+                maxWidth: '800px',
+                margin: '2rem auto 0',
+                padding: '0 1rem'
+              }}>
+                {[
+                  { icon: '📚', text: 'Help me plan next semester', query: 'Help me plan my next semester' },
+                  { icon: '📊', text: 'How am I doing academically?', query: 'Give me a summary of my academic progress' },
+                  { icon: '🎯', text: 'What courses can I take?', query: 'What courses can I enroll in next semester?' },
+                  { icon: '💭', text: 'I need course advice', query: 'I need advice on course selection' },
+                ].map((starter, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setQuery(starter.query);
+                      // Auto-submit after a brief delay to show the query
+                      setTimeout(() => handleSendMessage(starter.query), 100);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '1rem 1.25rem',
+                      backgroundColor: 'white',
+                      border: '2px solid #e2e8f0',
+                      borderRadius: '0.75rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      fontSize: '1rem',
+                      fontWeight: 500,
+                      color: '#2d3748',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#667eea';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 6px rgba(102, 126, 234, 0.1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+                    }}
+                  >
+                    <span style={{ fontSize: '1.5rem' }}>{starter.icon}</span>
+                    <span style={{ textAlign: 'left', flex: 1 }}>{starter.text}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -629,13 +684,42 @@ function HomePage() {
                 border: '1px solid #e2e8f0',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#718096' }}>
-                  <Loader size={18} className="spinner-icon" style={{ animation: 'spin 1s linear infinite' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#718096' }}>
+                  {/* Animated typing dots */}
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          backgroundColor: '#667eea',
+                          animation: 'typingDot 1.4s infinite',
+                          animationDelay: `${i * 0.2}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
                   <span>{t('home.thinking')}</span>
                 </div>
               </div>
             </div>
           )}
+
+          {/* Add CSS animation for typing dots */}
+          <style>{`
+            @keyframes typingDot {
+              0%, 60%, 100% {
+                opacity: 0.3;
+                transform: translateY(0);
+              }
+              30% {
+                opacity: 1;
+                transform: translateY(-6px);
+              }
+            }
+          `}</style>
 
           {/* Agent tool confirmation dialog */}
           {pendingConfirmations.length > 0 && (

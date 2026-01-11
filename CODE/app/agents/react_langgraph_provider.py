@@ -43,30 +43,60 @@ class ReActLangGraphProvider(AgentProvider):
         # Create tools with user context
         tools = self._create_tools()
 
-        # System prompt for academic advisor
-        system_prompt = """You are a friendly academic advisor assistant.
+        # System prompt for academic advisor with conversation-first approach
+        system_prompt = """You are a warm, empathetic academic advisor - like a career counselor who genuinely cares about students.
 
-Your capabilities:
-- Search uploaded documents for course materials and information
-- Access student's academic records (completed courses, grades, GPA)
-- Check available courses for enrollment (with prerequisite validation)
-- View degree curriculum and requirements
-- Search the web for current information
-- Provide study planning recommendations
+YOUR PERSONALITY:
+- Friendly and conversational (like talking to a trusted friend)
+- Empathetic and supportive (acknowledge feelings before problem-solving)
+- Encouraging and positive (celebrate wins, offer hope during challenges)
+- Patient and clear (explain complex prerequisites step-by-step)
 
-CRITICAL RULES - YOU MUST FOLLOW THESE:
-1. ALWAYS use tools to get student data - NEVER guess or make up information
-2. When asked about student's courses, grades, or plans - YOU MUST call the appropriate tool
-3. Do NOT ask clarifying questions if the query is clear - just call the tool
-4. Only mention courses/data explicitly returned by tools
-5. Always respond in the SAME LANGUAGE as the user's question
+CONVERSATION-FIRST APPROACH:
 
-Examples:
-- "What courses have I completed?" -> Call get_completed_courses immediately
-- "What courses can I take?" -> Call get_available_courses immediately
-- "Generate a study plan" -> Call create_study_plan immediately
+1. GREETINGS & SMALL TALK - NO TOOLS NEEDED:
+   - "Hello", "Hi", "How are you", "Thank you", "Goodbye"
+   - Respond warmly: "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?"
+   - Do NOT call tools for simple greetings
 
-Do not invent data - always use tool results. DO NOT respond without calling tools first when student data is needed."""
+2. EMOTIONAL SUPPORT - EMPATHY FIRST, THEN TOOLS:
+   - If student seems stressed/worried/overwhelmed:
+     * Start: "I understand this feels overwhelming..."
+     * Then: Call tools to provide practical help
+   - If student is confused:
+     * Start: "Let's break this down together..."
+     * Then: Use tools + diagrams to clarify
+   - If student is excited:
+     * Start: "I love your enthusiasm!"
+     * Then: Support their goals with data
+
+3. INFORMATION QUERIES - USE TOOLS WITH NARRATIVE:
+   - "What courses have I completed?" → Call get_completed_courses
+   - BUT frame it: "Let me pull up your transcript... [tool results] → You've completed 8 courses with a 3.4 GPA - excellent work!"
+   - NEVER say "Tool returned..." - integrate data naturally
+
+4. PLANNING QUERIES - INTERACTIVE MULTI-TURN:
+   - "Help me plan next semester"
+   - Ask clarifying questions:
+     * "What's your priority this semester - lighter workload or advancing quickly?"
+     * "Any specific courses you're interested in?"
+   - Present options, get confirmation, THEN use create_study_plan
+
+5. REFLECTION QUERIES - NO NEW TOOLS:
+   - "Why did you recommend this?"
+   - Explain reasoning from previous tool calls
+   - Show prerequisite logic, GPA considerations, etc.
+
+RESPONSE STRUCTURE (ALWAYS FOLLOW):
+1. ACKNOWLEDGMENT: "Great question!" / "I can help with that."
+2. MAIN CONTENT: Tool results woven into natural explanation
+3. CLOSING: Follow-up question OR encouragement OR next step
+
+CRITICAL RULES:
+- Respond in the SAME LANGUAGE as the user's question
+- Use tools when needed, but prioritize conversation quality
+- Never invent courses or data - only use tool results
+- If you don't have data, say so clearly and offer alternatives"""
 
         # Create agent without checkpointing for now
         # TODO: Add persistent checkpointing for conversation memory
@@ -525,6 +555,116 @@ Do not invent data - always use tool results. DO NOT respond without calling too
                 "warnings": plan_result.get("warnings", [])
             }
 
+        @tool
+        async def get_student_profile_summary() -> dict:
+            """Get a comprehensive summary of the student's academic profile.
+
+            Use this when the student asks broad questions like:
+            - "How am I doing?" / "How's my progress?"
+            - "Where am I in my degree?"
+            - "Give me a summary of my academic progress"
+            - "What's my overall status?"
+
+            Returns:
+                Dict with GPA, completed credits, in-progress courses, strengths, summary
+            """
+            # Get degree ID
+            degree_result = await self.tool_executor.execute(
+                tool_name="get_student_degree",
+                parameters={},
+                user=self._current_user
+            )
+
+            if degree_result.error:
+                return {"error": "Could not retrieve student degree"}
+
+            degree_id = degree_result.result.get("degree_id")
+
+            # Get schooling and curriculum in parallel
+            schooling_result = await self.tool_executor.execute(
+                tool_name="get_student_schooling",
+                parameters={
+                    "student_id": str(self._current_user.id),
+                    "degree_id": degree_id
+                },
+                user=self._current_user
+            )
+
+            curriculum_result = await self.tool_executor.execute(
+                tool_name="get_degree_curriculum",
+                parameters={"degree_id": degree_id},
+                user=self._current_user
+            )
+
+            if schooling_result.error or curriculum_result.error:
+                return {"error": "Could not retrieve academic data"}
+
+            # Calculate summary statistics
+            schooling = schooling_result.result
+            curriculum = curriculum_result.result
+
+            completed_courses = schooling.get("schooling_records", [])
+            in_progress_courses = schooling.get("in_progress_subjects", [])
+            gpa = schooling.get("gpa", 0.0)
+            total_credits_earned = schooling.get("total_credits", 0)
+
+            # Calculate total required credits from curriculum
+            total_required_credits = sum(
+                sum(course.get("credits", 0) for course in semester.get("subjects", []))
+                for semester in curriculum.get("curriculum", [])
+            )
+
+            remaining_credits = total_required_credits - total_credits_earned
+            progress_percentage = (total_credits_earned / total_required_credits * 100) if total_required_credits > 0 else 0
+
+            # Find strongest areas (courses with highest grades)
+            graded_courses = [c for c in completed_courses if c.get("grade") is not None]
+            if graded_courses:
+                graded_courses.sort(key=lambda x: x.get("grade", 0), reverse=True)
+                top_courses = graded_courses[:3]
+                strengths = [c.get("subject_name", c.get("subject_id")) for c in top_courses]
+            else:
+                strengths = []
+
+            return {
+                "gpa": round(gpa, 2),
+                "completed_credits": total_credits_earned,
+                "remaining_credits": remaining_credits,
+                "total_required_credits": total_required_credits,
+                "progress_percentage": round(progress_percentage, 1),
+                "completed_courses_count": len(completed_courses),
+                "in_progress_courses_count": len(in_progress_courses),
+                "in_progress_courses": [c.get("subject_name", c.get("subject_id")) for c in in_progress_courses],
+                "strengths": strengths,
+                "summary": f"Completed {total_credits_earned}/{total_required_credits} credits ({progress_percentage:.1f}% of degree)"
+            }
+
+        @tool
+        async def save_student_goal(goal_text: str, category: str = "general") -> dict:
+            """Save a student's stated goal or career interest for future reference.
+
+            Use when student mentions future aspirations or goals:
+            - Career interests: "I want to work in data science"
+            - Academic goals: "I want to graduate by 2026"
+            - Personal goals: "I want to study abroad"
+            - Skill development: "I want to learn machine learning"
+
+            Args:
+                goal_text: The goal statement
+                category: Goal category - "career", "academic", "personal", or "general"
+
+            Returns:
+                Confirmation that goal was saved
+            """
+            # Note: This will be stored in conversation metadata
+            # For now, return confirmation. Future: integrate with conversation service
+            return {
+                "success": True,
+                "goal_saved": goal_text,
+                "category": category,
+                "message": f"I've noted your {category} goal: '{goal_text}'. I'll keep this in mind as we plan your path forward!"
+            }
+
         return [
             search_documents,
             get_completed_courses,
@@ -534,7 +674,38 @@ Do not invent data - always use tool results. DO NOT respond without calling too
             get_student_plan,
             web_search,
             create_study_plan,
+            get_student_profile_summary,
+            save_student_goal,
         ]
+
+    def _detect_greeting(self, query: str) -> bool:
+        """Detect if query is a simple greeting."""
+        query_lower = query.lower().strip()
+        greetings = ['hello', 'hi', 'hey', 'hola', 'good morning', 'good afternoon',
+                    'good evening', 'buenos dias', 'buenas tardes', 'buenas noches']
+
+        # Check if it's a short greeting (3 words or less)
+        word_count = len(query.split())
+        if word_count <= 3:
+            return any(greeting in query_lower for greeting in greetings)
+        return False
+
+    def _detect_emotional_context(self, query: str) -> Optional[str]:
+        """Detect emotional context from query keywords."""
+        query_lower = query.lower()
+
+        stress_keywords = ['overwhelmed', 'stressed', 'worried', 'anxious', 'too much', 'can\'t handle']
+        confusion_keywords = ['confused', 'lost', 'don\'t understand', 'don\'t get', 'unclear']
+        excitement_keywords = ['excited', 'can\'t wait', 'looking forward', 'thrilled']
+
+        if any(keyword in query_lower for keyword in stress_keywords):
+            return "stressed"
+        elif any(keyword in query_lower for keyword in confusion_keywords):
+            return "confused"
+        elif any(keyword in query_lower for keyword in excitement_keywords):
+            return "excited"
+
+        return None
 
     async def execute_query(
         self,
@@ -544,10 +715,38 @@ Do not invent data - always use tool results. DO NOT respond without calling too
         auto_approve_tools: bool = False,
         **kwargs
     ) -> AgentResponse:
-        """Process user query using ReAct agent."""
+        """Process user query using ReAct agent with conversation-first approach."""
+
+        # Extract language parameter
+        language = kwargs.get("language")
+
+        # Detect simple greetings - respond without agent invocation
+        if self._detect_greeting(query):
+            logger.info("Detected greeting - responding without tools")
+            return AgentResponse(
+                answer="Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?",
+                agent_steps=[],
+                conversation_id=conversation_id,
+                is_complete=True
+            )
+
+        # Detect emotional context for better conversation handling
+        emotional_context = self._detect_emotional_context(query)
+        if emotional_context:
+            logger.info(f"Detected emotional context: {emotional_context}")
+            # TODO: Store in conversation metadata when metadata service is implemented
 
         # Initialize agent with user context
         await self._initialize_agent(user)
+
+        # Add language instruction to query if specified
+        enhanced_query = query
+        if language:
+            if language == "spanish":
+                enhanced_query = f"{query}\n\n[IMPORTANT: Respond in Spanish]"
+            elif language == "english":
+                enhanced_query = f"{query}\n\n[IMPORTANT: Respond in English]"
+            logger.info(f"Language specified: {language}")
 
         # Configure thread for conversation persistence
         config = {
@@ -559,7 +758,7 @@ Do not invent data - always use tool results. DO NOT respond without calling too
         # Execute agent
         try:
             result = await self.agent.ainvoke(
-                {"messages": [HumanMessage(content=query)]},
+                {"messages": [HumanMessage(content=enhanced_query)]},
                 config=config
             )
 

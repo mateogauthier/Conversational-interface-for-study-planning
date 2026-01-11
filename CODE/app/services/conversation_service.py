@@ -448,6 +448,147 @@ class ConversationService:
 
         return list(all_files)
 
+    async def update_conversation_metadata(
+        self,
+        conversation_id: str,
+        updates: Dict[str, Any],
+        merge: bool = True
+    ) -> None:
+        """
+        Update conversation metadata.
+
+        Args:
+            conversation_id: Conversation ID
+            updates: Dict of metadata updates
+            merge: If True, merge with existing metadata. If False, replace entirely.
+        """
+        if merge:
+            # Merge with existing metadata
+            conversation = await self.conversations_collection.find_one(
+                {"_id": ObjectId(conversation_id)}
+            )
+            if conversation:
+                existing_metadata = conversation.get("metadata", {})
+                # Deep merge for nested dicts
+                for key, value in updates.items():
+                    if isinstance(value, dict) and key in existing_metadata:
+                        existing_metadata[key].update(value)
+                    else:
+                        existing_metadata[key] = value
+                updates = existing_metadata
+
+        await self.conversations_collection.update_one(
+            {"_id": ObjectId(conversation_id)},
+            {"$set": {"metadata": updates, "updated_at": datetime.utcnow()}}
+        )
+
+        logger.debug(f"Updated metadata for conversation {conversation_id}")
+
+    async def add_student_goal(
+        self,
+        conversation_id: str,
+        goal: str,
+        category: str = "general"
+    ) -> None:
+        """
+        Add a student goal to conversation metadata.
+
+        Args:
+            conversation_id: Conversation ID
+            goal: Goal text
+            category: Goal category (career, academic, personal, general)
+        """
+        goal_entry = {
+            "goal": goal,
+            "category": category,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # Get existing metadata
+        conversation = await self.conversations_collection.find_one(
+            {"_id": ObjectId(conversation_id)}
+        )
+
+        if conversation:
+            metadata = conversation.get("metadata", {})
+            student_goals = metadata.get("student_goals", [])
+            student_goals.append(goal_entry)
+            metadata["student_goals"] = student_goals
+
+            await self.conversations_collection.update_one(
+                {"_id": ObjectId(conversation_id)},
+                {"$set": {"metadata": metadata, "updated_at": datetime.utcnow()}}
+            )
+
+            logger.info(f"Added student goal to conversation {conversation_id}: {goal}")
+
+    async def update_emotional_context(
+        self,
+        conversation_id: str,
+        tone: str
+    ) -> None:
+        """
+        Update emotional context based on detected tone.
+
+        Args:
+            conversation_id: Conversation ID
+            tone: Detected emotional tone (stressed, confused, excited, confident, neutral)
+        """
+        # Get existing metadata
+        conversation = await self.conversations_collection.find_one(
+            {"_id": ObjectId(conversation_id)}
+        )
+
+        if conversation:
+            metadata = conversation.get("metadata", {})
+            emotional_context = metadata.get("emotional_context", {})
+
+            # Update tone and increment stress counter if needed
+            emotional_context["last_tone"] = tone
+            emotional_context["last_updated"] = datetime.utcnow().isoformat()
+
+            if tone == "stressed":
+                emotional_context["stress_count"] = emotional_context.get("stress_count", 0) + 1
+
+            metadata["emotional_context"] = emotional_context
+
+            await self.conversations_collection.update_one(
+                {"_id": ObjectId(conversation_id)},
+                {"$set": {"metadata": metadata, "updated_at": datetime.utcnow()}}
+            )
+
+            logger.debug(f"Updated emotional context for conversation {conversation_id}: {tone}")
+
+    async def add_milestone(
+        self,
+        conversation_id: str,
+        milestone: str
+    ) -> None:
+        """
+        Add a milestone to conversation metadata.
+
+        Args:
+            conversation_id: Conversation ID
+            milestone: Milestone description
+        """
+        # Get existing metadata
+        conversation = await self.conversations_collection.find_one(
+            {"_id": ObjectId(conversation_id)}
+        )
+
+        if conversation:
+            metadata = conversation.get("metadata", {})
+            milestones = metadata.get("milestones", [])
+            milestones.append(f"{milestone} on {datetime.utcnow().strftime('%Y-%m-%d')}")
+            metadata["milestones"] = milestones
+
+            await self.conversations_collection.update_one(
+                {"_id": ObjectId(conversation_id)},
+                {"$set": {"metadata": metadata, "updated_at": datetime.utcnow()}}
+            )
+
+            logger.info(f"Added milestone to conversation {conversation_id}: {milestone}")
+
 
 # Global service instance (will be initialized with database in main.py)
 conversation_service: Optional[ConversationService] = None

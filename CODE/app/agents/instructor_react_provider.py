@@ -168,6 +168,96 @@ class InstructorReActProvider(AgentProvider):
         self._current_user = None
         self.max_iterations = 5
 
+    async def _detect_query_intent(self, query: str) -> Dict[str, Any]:
+        """Use LLM to detect query intent and emotional context in a language-agnostic way.
+
+        This replaces hardcoded keyword matching with intelligent LLM-based classification
+        that works across all languages.
+
+        Returns:
+            Dict with keys:
+                - is_greeting: bool (whether this is a simple greeting)
+                - emotional_tone: str (neutral/stressed/confused/excited)
+                - intent: str (greeting/question/planning/emotional_support/reflection)
+        """
+        from app.services.llm_service import llm_service
+
+        intent_prompt = f"""Analyze this student message and classify it:
+
+Student message: "{query}"
+
+Determine:
+1. Is this a simple greeting or small talk? (yes/no)
+   - Examples of greetings: "hello", "hi", "how are you", "good morning", etc. (in ANY language)
+   - Keep in mind brief messages (1-3 words) are often greetings
+
+2. What is the emotional tone? Choose ONE:
+   - neutral: Normal, calm, matter-of-fact
+   - stressed: Worried, anxious, overwhelmed, feeling pressure
+   - confused: Lost, unclear, doesn't understand something
+   - excited: Enthusiastic, looking forward to something, positive energy
+
+3. What is the primary intent? Choose ONE:
+   - greeting: Just saying hello or small talk
+   - question: Asking for specific information
+   - planning: Wants help planning courses or academic path
+   - emotional_support: Needs encouragement or reassurance
+   - reflection: Reviewing progress or discussing achievements
+
+Respond in EXACTLY this format (one line each):
+is_greeting: yes OR no
+emotional_tone: neutral OR stressed OR confused OR excited
+intent: greeting OR question OR planning OR emotional_support OR reflection"""
+
+        try:
+            result = await llm_service.generate_response(
+                prompt=intent_prompt,
+                model=None,  # Use default model
+                temperature=0.1  # Low temperature for consistent classification
+            )
+
+            response = result.get("response", "").lower()
+
+            # Parse response
+            is_greeting = "is_greeting: yes" in response
+
+            # Extract emotional tone
+            emotional_tone = "neutral"
+            for tone in ["stressed", "confused", "excited", "neutral"]:
+                if f"emotional_tone: {tone}" in response:
+                    emotional_tone = tone
+                    break
+
+            # Extract intent
+            intent = "question"
+            for intent_type in ["greeting", "question", "planning", "emotional_support", "reflection"]:
+                if f"intent: {intent_type}" in response:
+                    intent = intent_type
+                    break
+
+            logger.info(f"LLM intent detection: is_greeting={is_greeting}, emotional_tone={emotional_tone}, intent={intent}")
+
+            return {
+                "is_greeting": is_greeting,
+                "emotional_tone": emotional_tone,
+                "intent": intent
+            }
+
+        except Exception as e:
+            logger.error(f"Error in LLM intent detection: {e}")
+            # Fallback to simple detection
+            query_lower = query.lower().strip()
+            word_count = len(query.split())
+
+            # Simple fallback: very short messages might be greetings
+            is_greeting = word_count <= 2
+
+            return {
+                "is_greeting": is_greeting,
+                "emotional_tone": "neutral",
+                "intent": "greeting" if is_greeting else "question"
+            }
+
     async def _create_planner(self, user: UserInDB):
         """Create Instructor client for structured planning."""
         from openai import AsyncOpenAI
@@ -275,7 +365,8 @@ FORMAT REQUIREMENT:
         plan: QueryPlan,
         iteration: int,
         previous_results: List[IterationResult],
-        user: UserInDB
+        user: UserInDB,
+        language: Optional[str] = None
     ) -> IterationResult:
         """Execute one iteration of the ReAct loop."""
 
@@ -299,11 +390,12 @@ IMPORTANT: You MUST use the tools mentioned above to gather the actual student d
             # No structured plan - let ReAct work autonomously with its native tool calling
             enhanced_query = f"{query}{context}"
 
-        # Execute ReAct agent
+        # Execute ReAct agent with language parameter
         agent_response = await self.base_agent.execute_query(
             query=enhanced_query,
             user=user,
-            conversation_id=f"instructor_{user.id}_{iteration}"
+            conversation_id=f"instructor_{user.id}_{iteration}",
+            language=language  # Pass language to ReAct agent
         )
 
         # Extract tools used
@@ -416,8 +508,46 @@ Be honest about confidence and limitations."""
             user: User making the request
             conversation_id: Conversation ID
             auto_approve_tools: Whether to auto-approve tools
-            **kwargs: Additional params including question_id and answer_to_question
+            **kwargs: Additional params including question_id, answer_to_question, and language
         """
+
+        # Extract language parameter from kwargs (defaults to config setting if not provided)
+        from app.core.config import get_settings
+        settings = get_settings()
+        language = kwargs.get("language") or settings.default_language
+
+        # Use LLM to detect query intent and emotional context
+        intent_result = await self._detect_query_intent(query)
+
+        # If it's a simple greeting, respond warmly without planning/tools
+        if intent_result.get("is_greeting"):
+            logger.info(f"Detected greeting via LLM - responding without tools (language: {language})")
+
+            # Generate language-appropriate greeting response
+            greeting_responses = {
+                "spanish": "¡Hola! Me alegra verte. Estoy aquí para ayudarte en tu trayectoria académica. ¿Qué tienes en mente hoy?",
+                "english": "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?",
+                "auto": "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?"  # Default to English for auto
+            }
+
+            greeting = greeting_responses.get(language, greeting_responses["english"])
+
+            return AgentResponse(
+                answer=greeting,
+                agent_steps=[],
+                conversation_id=conversation_id,
+                is_complete=True
+            )
+
+        # Log emotional context for better conversation handling
+        emotional_tone = intent_result.get("emotional_tone")
+        if emotional_tone and emotional_tone != "neutral":
+            logger.info(f"Detected emotional tone via LLM: {emotional_tone}")
+
+        # Log detected intent
+        detected_intent = intent_result.get("intent")
+        if detected_intent:
+            logger.info(f"Detected user intent via LLM: {detected_intent}")
 
         self._current_user = user
         agent_steps = []
@@ -515,7 +645,8 @@ Be honest about confidence and limitations."""
                     plan=plan,
                     iteration=iteration,
                     previous_results=iteration_results,
-                    user=user
+                    user=user,
+                    language=language  # Pass language to iteration
                 )
 
                 iteration_results.append(iteration_result)
@@ -541,12 +672,12 @@ Be honest about confidence and limitations."""
                         ))
 
                         return AgentResponse(
-                            answer=f"Lo siento, estoy teniendo problemas técnicos para acceder a tu información académica. "
-                                   f"El modelo de IA (Llama 3.1) no está llamando correctamente a las herramientas necesarias para obtener tus datos reales. "
-                                   f"\n\n**Sugerencias:**\n"
-                                   f"- Intenta reformular tu pregunta de manera más específica\n"
-                                   f"- O contacta al administrador para revisar la configuración del sistema\n"
-                                   f"\n\n*Nota técnica: El LLM generó una respuesta pero no utilizó las herramientas de base de datos para verificar tu información real.*",
+                            answer=f"I'm having technical difficulties accessing your academic information. "
+                                   f"The AI model is not correctly calling the necessary tools to retrieve your actual data. "
+                                   f"\n\n**Suggestions:**\n"
+                                   f"- Try rephrasing your question more specifically\n"
+                                   f"- Or contact the administrator to review the system configuration\n"
+                                   f"\n\n*Technical note: The LLM generated a response but did not use the database tools to verify your actual information.*",
                             agent_steps=agent_steps,
                             is_complete=False,
                             iterations_completed=iteration,
@@ -568,31 +699,34 @@ Be honest about confidence and limitations."""
                 if iteration_result.is_sufficient:
                     break
 
-            # Step 3: Validate and structure final answer
-            agent_steps.append(AgentStep(
-                step_number=len(agent_steps) + 1,
-                step_type="thought",
-                content="✅ Validating final answer..."
-            ))
+            # Step 3: Use the last iteration's answer directly (skip validation to prevent hallucinations)
+            # The validation phase was causing the LLM to hallucinate course names and data
+            # Instead, we trust the ReAct agent's direct answer which has actual tool results
+            last_iteration = iteration_results[-1] if iteration_results else None
 
-            final_answer = await self._validate_answer(query, iteration_results, user)
+            if not last_iteration:
+                return AgentResponse(
+                    answer="I wasn't able to gather the information needed to answer your question.",
+                    agent_steps=agent_steps,
+                    is_complete=False,
+                    iterations_completed=0,
+                    conversation_id=conversation_id
+                )
 
             agent_steps.append(AgentStep(
                 step_number=len(agent_steps) + 1,
                 step_type="answer",
-                content=f"Final answer (confidence: {final_answer.confidence:.0%})"
+                content="✓ Answer generated from tool results"
             ))
 
-            # Build final response
-            answer_text = final_answer.answer
-            if final_answer.caveats:
-                answer_text += "\n\n⚠️ Important notes:\n" + "\n".join([f"- {c}" for c in final_answer.caveats])
+            # Extract tool names from all iterations
+            tools_used = [t.tool_name for it in iteration_results for t in it.tools_used]
 
             return AgentResponse(
-                answer=answer_text,
+                answer=last_iteration.findings,  # Use the ReAct agent's answer directly
                 agent_steps=agent_steps,
-                tools_executed=final_answer.tools_used,
-                is_complete=final_answer.is_complete,
+                tools_executed=tools_used,
+                is_complete=True,
                 iterations_completed=len(iteration_results),
                 max_iterations=self.max_iterations,
                 conversation_id=conversation_id
