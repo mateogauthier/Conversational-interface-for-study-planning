@@ -287,7 +287,7 @@ intent: greeting OR question OR planning OR emotional_support OR reflection"""
         planning_prompt = f"""You are an academic advisor planning how to help a student.
 
 Available tools:
-- search_documents: Search uploaded files
+- search_documents: Search uploaded files (USE FIRST for course/policy questions)
 - get_completed_courses: Get completed courses with final grades and GPA
 - get_current_courses: Get in-progress courses currently enrolled
 - get_available_courses: Get enrollable courses (prerequisites validated)
@@ -296,7 +296,21 @@ Available tools:
 - create_study_plan: Generate NEW study plan and save to database
 - web_search: Search the web
 
+**CRITICAL PRIORITY ORDER:**
+1. FIRST: Check academic database for transcript, progress, course data
+   - get_completed_courses, get_current_courses - Student progress and GPA
+   - get_available_courses - What student can enroll in (with prerequisite validation)
+   - get_degree_curriculum - Degree requirements and course structure
+   - get_student_plan, create_study_plan - Academic planning
+2. SECOND: Use uploaded documents (search_documents) to enhance with details when needed
+   - Course syllabi for topic breakdowns
+   - Lecture notes for concept explanations
+   - University policies not in curriculum database
+3. LAST: Use web search for external/current information
+
 Important distinctions:
+- Use academic tools (get_completed_courses, get_curriculum, etc.) as primary source
+- Use search_documents to ADD DETAIL when academic tools don't provide enough
 - Use create_study_plan when user wants to GENERATE/CREATE a plan for future semesters
 - Use get_student_plan when user wants to VIEW an existing saved plan
 - Use get_completed_courses for GPA and past performance

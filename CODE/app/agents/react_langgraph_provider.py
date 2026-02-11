@@ -96,7 +96,45 @@ CRITICAL RULES:
 - Respond in the SAME LANGUAGE as the user's question
 - Use tools when needed, but prioritize conversation quality
 - Never invent courses or data - only use tool results
-- If you don't have data, say so clearly and offer alternatives"""
+- If you don't have data, say so clearly and offer alternatives
+
+**INFORMATION RETRIEVAL STRATEGY:**
+
+When answering questions, follow this priority:
+
+1. **Academic Database FIRST** (Primary Source):
+   - Student's transcript, GPA, progress (get_completed_courses, get_current_courses)
+   - Course prerequisites and availability (get_available_courses)
+   - Degree curriculum and requirements (get_degree_curriculum)
+   - Study plans (get_student_plan, create_study_plan)
+
+   Example: "What courses have I passed?" → get_completed_courses()
+   Example: "What can I take next semester?" → get_available_courses()
+
+2. **Uploaded Documents When Needed** (Supplementary Enhancement):
+   Use search_documents to add detail when academic tools don't provide enough:
+   - Course syllabi for topic breakdowns
+   - Lecture notes for concept explanations
+   - University policies not in curriculum database
+   - Assignment details and grading criteria
+
+   Example: "What topics are in Advanced AI?" → get_degree_curriculum() FIRST, then search_documents("Advanced AI syllabus") for details
+
+3. **Web Search LAST** (External Information):
+   - Information not in database or documents
+   - Current events, job market, industry trends
+   - Real-time information
+
+   Example: "What's the current job market for CS?" → web_search("computer science job market 2024")
+
+**Combining Sources for Best Answers:**
+Often the best answers use academic data enhanced with document details:
+- User: "Should I take Advanced AI next semester?"
+  → get_available_courses() # Check if student can enroll (prerequisites)
+  → get_completed_courses() # See what student has finished
+  → search_documents("Advanced AI syllabus topics") # Get course details for decision
+  → Synthesize: "You're eligible for Advanced AI since you've completed [prereqs from database]. Your GPA of [from transcript] shows you're prepared. The syllabus shows it covers [from documents], building on [courses you've taken]."
+"""
 
         # Create agent without checkpointing for now
         # TODO: Add persistent checkpointing for conversation memory
@@ -113,16 +151,50 @@ CRITICAL RULES:
 
         @tool
         async def search_documents(query: str) -> dict:
-            """Search uploaded documents for relevant information.
+            """Search uploaded documents using semantic search to enhance answers with supplementary details.
 
-            Use this when the user asks about course materials, uploaded files,
-            or content from their documents.
+            Use this tool to ADD DETAIL when academic database tools don't provide enough information:
+            - Course syllabi with detailed topic breakdowns
+            - Lecture notes explaining specific concepts
+            - University policies and regulations
+            - Assignment details, grading criteria, or exam information
+            - Study materials uploaded by the student
+
+            This tool searches through:
+            - Private files uploaded by the student (lecture notes, personal materials)
+            - Public files uploaded by administrators (syllabi, university policies)
+
+            Returns relevant text chunks with source filenames for citations.
+
+            **When to use this tool:**
+            - Student explicitly asks about syllabus, lecture notes, or uploaded materials
+            - Academic tools (get_completed_courses, get_curriculum) provided the answer but more detail needed
+            - Student needs specific examples or explanations from their materials
+            - You want to cite sources from the student's own documents
+
+            **When NOT to use this tool first:**
+            - Questions about student's progress, GPA, or completed courses → use get_completed_courses
+            - Questions about what courses to take → use get_available_courses
+            - Questions about degree requirements → use get_degree_curriculum
 
             Args:
-                query: Search query describing what to look for
+                query: Search query describing what information you're looking for
+                       (e.g., "Advanced AI syllabus topics", "grading policy", "midterm preparation")
 
             Returns:
-                Dict with search results including file names and relevant chunks
+                Dict with:
+                - relevant_chunks: List of text chunks matching the query
+                - sources: List of source filenames
+                - count: Number of chunks found
+
+            **Example Usage:**
+            - User: "What topics are covered in Machine Learning?"
+              → First: get_degree_curriculum() to see course info
+              → Then: search_documents("Machine Learning syllabus topics") for detailed breakdown
+            - User: "Show me my lecture notes on neural networks"
+              → search_documents("neural networks lecture notes")
+            - User: "What's the policy on late assignments?"
+              → search_documents("late assignment policy")
             """
             result = await self.tool_executor.execute(
                 tool_name="search_documents",
