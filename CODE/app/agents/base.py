@@ -110,6 +110,7 @@ class AgentProvider(ABC):
         query: str,
         user: Any,  # UserInDB type
         conversation_id: Optional[str] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
         auto_approve_tools: bool = False,
         **kwargs
     ) -> AgentResponse:
@@ -119,6 +120,7 @@ class AgentProvider(ABC):
             query: User's query text
             user: Authenticated user object
             conversation_id: Optional conversation ID to continue
+            conversation_history: Prior messages [{"role": "user"|"assistant", "content": "..."}]
             auto_approve_tools: Whether to auto-approve tool executions
             **kwargs: Additional provider-specific parameters
 

@@ -90,6 +90,7 @@ async def agent_query(
 
         # Handle conversation persistence
         conversation_id = request.conversation_id
+        conversation_history = []
         if conversation_id:
             # Load existing conversation history
             conversation_history = await conversation_service.get_conversation_history(
@@ -115,6 +116,7 @@ async def agent_query(
             query=request.prompt,
             user=current_user,
             conversation_id=conversation_id,
+            conversation_history=conversation_history,
             auto_approve_tools=request.auto_approve_tools,
             # Pass through RAG parameters
             n_results=request.n_results,

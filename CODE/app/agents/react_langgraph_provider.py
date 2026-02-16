@@ -257,6 +257,7 @@ Often the best answers use academic data enhanced with document details:
                 "completed_courses": data.get("schooling_records", []),
                 "total_credits_earned": data.get("total_credits", 0),
                 "gpa": data.get("gpa", 0.0),
+                "gpa_scale": "0-100",
                 "course_count": len(data.get("schooling_records", []))
             }
 
@@ -680,11 +681,13 @@ Often the best answers use academic data enhanced with document details:
             gpa = schooling.get("gpa", 0.0)
             total_credits_earned = schooling.get("total_credits", 0)
 
-            # Calculate total required credits from curriculum
-            total_required_credits = sum(
-                sum(course.get("credits", 0) for course in semester.get("subjects", []))
-                for semester in curriculum.get("curriculum", [])
-            )
+            # Use degree's defined total credits
+            total_required_credits = curriculum.get("total_credits", 0)
+            if total_required_credits == 0:
+                total_required_credits = sum(
+                    sum(course.get("credits", 0) for course in semester.get("subjects", []))
+                    for semester in curriculum.get("curriculum", [])
+                )
 
             remaining_credits = total_required_credits - total_credits_earned
             progress_percentage = (total_credits_earned / total_required_credits * 100) if total_required_credits > 0 else 0
@@ -700,6 +703,7 @@ Often the best answers use academic data enhanced with document details:
 
             return {
                 "gpa": round(gpa, 2),
+                "gpa_scale": "0-100",
                 "completed_credits": total_credits_earned,
                 "remaining_credits": remaining_credits,
                 "total_required_credits": total_required_credits,
@@ -784,6 +788,7 @@ Often the best answers use academic data enhanced with document details:
         query: str,
         user: UserInDB,
         conversation_id: Optional[str] = None,
+        conversation_history: Optional[list] = None,
         auto_approve_tools: bool = False,
         **kwargs
     ) -> AgentResponse:
@@ -829,8 +834,18 @@ Often the best answers use academic data enhanced with document details:
 
         # Execute agent
         try:
+            # Build message list with conversation history
+            messages = []
+            if conversation_history:
+                for msg in conversation_history:
+                    if msg["role"] == "user":
+                        messages.append(HumanMessage(content=msg["content"]))
+                    elif msg["role"] == "assistant":
+                        messages.append(AIMessage(content=msg["content"]))
+            messages.append(HumanMessage(content=enhanced_query))
+
             result = await self.agent.ainvoke(
-                {"messages": [HumanMessage(content=enhanced_query)]},
+                {"messages": messages},
                 config=config
             )
 

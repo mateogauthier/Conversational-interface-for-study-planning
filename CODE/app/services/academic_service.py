@@ -451,7 +451,7 @@ class AcademicService:
                     weighted_grade_sum += record.grade * record.credits
             total_credits_attempted += record.credits
 
-        gpa = weighted_grade_sum / total_credits_attempted if total_credits_attempted > 0 else 0.0
+        gpa = weighted_grade_sum / total_credits_earned if total_credits_earned > 0 else 0.0
 
         await self.student_schooling_collection.update_one(
             {"student_id": student_id, "degree_id": degree_id},

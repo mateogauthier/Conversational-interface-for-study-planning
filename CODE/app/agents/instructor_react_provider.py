@@ -380,7 +380,8 @@ FORMAT REQUIREMENT:
         iteration: int,
         previous_results: List[IterationResult],
         user: UserInDB,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        conversation_history: Optional[list] = None
     ) -> IterationResult:
         """Execute one iteration of the ReAct loop."""
 
@@ -409,6 +410,7 @@ IMPORTANT: You MUST use the tools mentioned above to gather the actual student d
             query=enhanced_query,
             user=user,
             conversation_id=f"instructor_{user.id}_{iteration}",
+            conversation_history=conversation_history,
             language=language  # Pass language to ReAct agent
         )
 
@@ -512,6 +514,7 @@ Be honest about confidence and limitations."""
         query: str,
         user: UserInDB,
         conversation_id: Optional[str] = None,
+        conversation_history: Optional[list] = None,
         auto_approve_tools: bool = False,
         **kwargs
     ) -> AgentResponse:
@@ -521,6 +524,7 @@ Be honest about confidence and limitations."""
             query: User's query or answer to a previous question
             user: User making the request
             conversation_id: Conversation ID
+            conversation_history: Prior messages for context
             auto_approve_tools: Whether to auto-approve tools
             **kwargs: Additional params including question_id, answer_to_question, and language
         """
@@ -660,7 +664,8 @@ Be honest about confidence and limitations."""
                     iteration=iteration,
                     previous_results=iteration_results,
                     user=user,
-                    language=language  # Pass language to iteration
+                    language=language,
+                    conversation_history=conversation_history
                 )
 
                 iteration_results.append(iteration_result)
@@ -759,7 +764,8 @@ Be honest about confidence and limitations."""
             base_response = await self.base_agent.execute_query(
                 query=query,
                 user=user,
-                conversation_id=conversation_id
+                conversation_id=conversation_id,
+                conversation_history=conversation_history
             )
 
             # Merge steps

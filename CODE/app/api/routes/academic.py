@@ -155,6 +155,7 @@ async def get_degree_curriculum(
         return {
             "degree_id": degree_id,
             "degree_name": degree.degree_name,
+            "total_credits": degree.total_credits,
             "curriculum": curriculum
         }
 

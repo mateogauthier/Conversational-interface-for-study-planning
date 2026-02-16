@@ -571,6 +571,7 @@ class AgentToolService:
             return {
                 "degree_id": data["degree_id"],
                 "degree_name": data["degree_name"],
+                "total_credits": data.get("total_credits", 0),
                 "curriculum": data["curriculum"]
             }
 
