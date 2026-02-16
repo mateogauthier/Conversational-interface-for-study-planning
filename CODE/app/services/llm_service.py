@@ -115,7 +115,7 @@ class LLMService:
             logger.error(f"Error ensuring model {model}: {str(e)}")
             return False
 
-    async def generate_response(self, prompt: str, model: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_response(self, prompt: str, model: Optional[str] = None, temperature: Optional[float] = None) -> Dict[str, Any]:
         """Generate a response using Ollama."""
         if not await self.is_available():
             raise LLMNotAvailableHTTPException("Ollama service is not available")
@@ -137,6 +137,8 @@ class LLMService:
                 "prompt": prompt,
                 "stream": False  # Use non-streaming for more reliable response
             }
+            if temperature is not None:
+                payload["options"] = {"temperature": temperature}
 
             client = await self._get_client()
             response = await client.post(url, json=payload, timeout=self.timeout)

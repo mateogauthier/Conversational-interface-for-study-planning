@@ -168,6 +168,43 @@ class InstructorReActProvider(AgentProvider):
         self._current_user = None
         self.max_iterations = 5
 
+    def _detect_followup(
+        self, query: str, conversation_history: Optional[list]
+    ) -> Optional[str]:
+        """Detect if a short query is a follow-up to a previous assistant message.
+
+        Returns an enhanced query with context, or None if not a follow-up.
+        """
+        if not conversation_history or len(conversation_history) < 2:
+            return None
+
+        # Only enhance short messages (likely responses, not new queries)
+        if len(query.split()) > 5:
+            return None
+
+        # Get the last assistant message
+        last_assistant = None
+        for msg in reversed(conversation_history):
+            if msg["role"] == "assistant":
+                last_assistant = msg["content"]
+                break
+
+        if not last_assistant:
+            return None
+
+        # Truncate to last 500 chars to keep context manageable
+        context_snippet = last_assistant[-500:]
+
+        return (
+            f'The student responded: "{query}"\n\n'
+            f"This is a follow-up to your previous message which ended with:\n"
+            f'"""{context_snippet}"""\n\n'
+            f"Interpret their response in the context of what you previously said. "
+            f"If they are agreeing, follow through on what you offered. "
+            f"If they are declining, acknowledge and offer alternatives. "
+            f"If they are asking for clarification, clarify."
+        )
+
     async def _detect_query_intent(self, query: str) -> Dict[str, Any]:
         """Use LLM to detect query intent and emotional context in a language-agnostic way.
 
@@ -250,12 +287,11 @@ intent: greeting OR question OR planning OR emotional_support OR reflection"""
             word_count = len(query.split())
 
             # Simple fallback: very short messages might be greetings
-            is_greeting = word_count <= 2
-
+            # Don't assume short messages are greetings — they could be follow-ups
             return {
-                "is_greeting": is_greeting,
+                "is_greeting": False,
                 "emotional_tone": "neutral",
-                "intent": "greeting" if is_greeting else "question"
+                "intent": "question"
             }
 
     async def _create_planner(self, user: UserInDB):
@@ -287,10 +323,14 @@ intent: greeting OR question OR planning OR emotional_support OR reflection"""
         planning_prompt = f"""You are an academic advisor planning how to help a student.
 
 Available tools:
+- get_course_recommendations: Get ML-ranked course recommendations (pass probability + academic relevance).
+  Use this FIRST when student asks for recommendations, suggestions, or what to take next.
+  This tool already handles prerequisite filtering internally — no need to call get_available_courses separately.
+  Supports multiple algorithms: random_forest (default), spm (sequential patterns), pm (peer similarity).
 - search_documents: Search uploaded files (USE FIRST for course/policy questions)
 - get_completed_courses: Get completed courses with final grades and GPA
 - get_current_courses: Get in-progress courses currently enrolled
-- get_available_courses: Get enrollable courses (prerequisites validated)
+- get_available_courses: Get full list of enrollable courses (prerequisites validated). Use only when user wants to SEE all options, not for recommendations.
 - get_degree_curriculum: Get full degree curriculum
 - get_student_plan: View existing saved study plan
 - create_study_plan: Generate NEW study plan and save to database
@@ -298,8 +338,9 @@ Available tools:
 
 **CRITICAL PRIORITY ORDER:**
 1. FIRST: Check academic database for transcript, progress, course data
+   - get_course_recommendations - ML-based course suggestions (USE FOR ANY RECOMMENDATION QUERY)
    - get_completed_courses, get_current_courses - Student progress and GPA
-   - get_available_courses - What student can enroll in (with prerequisite validation)
+   - get_available_courses - Full list of enrollable courses (only when listing, NOT for recommendations)
    - get_degree_curriculum - Degree requirements and course structure
    - get_student_plan, create_study_plan - Academic planning
 2. SECOND: Use uploaded documents (search_documents) to enhance with details when needed
@@ -309,7 +350,8 @@ Available tools:
 3. LAST: Use web search for external/current information
 
 Important distinctions:
-- Use academic tools (get_completed_courses, get_curriculum, etc.) as primary source
+- Use get_course_recommendations when user asks for suggestions, recommendations, or what to take next
+- Use get_available_courses ONLY when user wants to see ALL eligible courses (not for recommendations)
 - Use search_documents to ADD DETAIL when academic tools don't provide enough
 - Use create_study_plan when user wants to GENERATE/CREATE a plan for future semesters
 - Use get_student_plan when user wants to VIEW an existing saved plan
@@ -331,6 +373,8 @@ CRITICAL RULES:
 - If the query is ambiguous or missing critical information, set clarification_needed with a specific question
 
 Examples:
+- "What courses do you recommend?" -> can_answer_now=False (needs get_course_recommendations)
+- "What should I take next semester?" -> can_answer_now=False (needs get_course_recommendations)
 - "What courses can I enroll in?" -> can_answer_now=False (needs get_available_courses)
 - "What courses have I completed?" -> can_answer_now=False (needs get_completed_courses)
 - "What is the capital of France?" -> can_answer_now=True (general knowledge)
@@ -534,38 +578,44 @@ Be honest about confidence and limitations."""
         settings = get_settings()
         language = kwargs.get("language") or settings.default_language
 
-        # Use LLM to detect query intent and emotional context
-        intent_result = await self._detect_query_intent(query)
+        # Detect follow-up responses before intent detection
+        followup_enhanced = self._detect_followup(query, conversation_history)
+        if followup_enhanced:
+            query = followup_enhanced
+            logger.info("Detected short follow-up response, enhancing with context")
+        else:
+            # Use LLM to detect query intent and emotional context
+            intent_result = await self._detect_query_intent(query)
 
-        # If it's a simple greeting, respond warmly without planning/tools
-        if intent_result.get("is_greeting"):
-            logger.info(f"Detected greeting via LLM - responding without tools (language: {language})")
+            # If it's a simple greeting, respond warmly without planning/tools
+            if intent_result.get("is_greeting"):
+                logger.info(f"Detected greeting via LLM - responding without tools (language: {language})")
 
-            # Generate language-appropriate greeting response
-            greeting_responses = {
-                "spanish": "¡Hola! Me alegra verte. Estoy aquí para ayudarte en tu trayectoria académica. ¿Qué tienes en mente hoy?",
-                "english": "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?",
-                "auto": "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?"  # Default to English for auto
-            }
+                # Generate language-appropriate greeting response
+                greeting_responses = {
+                    "spanish": "¡Hola! Me alegra verte. Estoy aquí para ayudarte en tu trayectoria académica. ¿Qué tienes en mente hoy?",
+                    "english": "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?",
+                    "auto": "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?"
+                }
 
-            greeting = greeting_responses.get(language, greeting_responses["english"])
+                greeting = greeting_responses.get(language, greeting_responses["english"])
 
-            return AgentResponse(
-                answer=greeting,
-                agent_steps=[],
-                conversation_id=conversation_id,
-                is_complete=True
-            )
+                return AgentResponse(
+                    answer=greeting,
+                    agent_steps=[],
+                    conversation_id=conversation_id,
+                    is_complete=True
+                )
 
-        # Log emotional context for better conversation handling
-        emotional_tone = intent_result.get("emotional_tone")
-        if emotional_tone and emotional_tone != "neutral":
-            logger.info(f"Detected emotional tone via LLM: {emotional_tone}")
+            # Log emotional context for better conversation handling
+            emotional_tone = intent_result.get("emotional_tone")
+            if emotional_tone and emotional_tone != "neutral":
+                logger.info(f"Detected emotional tone via LLM: {emotional_tone}")
 
-        # Log detected intent
-        detected_intent = intent_result.get("intent")
-        if detected_intent:
-            logger.info(f"Detected user intent via LLM: {detected_intent}")
+            # Log detected intent
+            detected_intent = intent_result.get("intent")
+            if detected_intent:
+                logger.info(f"Detected user intent via LLM: {detected_intent}")
 
         self._current_user = user
         agent_steps = []

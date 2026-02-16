@@ -102,9 +102,13 @@ async def startup_event():
         try:
             from app.services.recommendation import init_recommendation_service
             from app.services.recommendation.rf_recommender import RandomForestRecommender
+            from app.services.recommendation.spm_recommender import SPMRecommender
+            from app.services.recommendation.pm_recommender import PatternMiningRecommender
 
             rec_service = init_recommendation_service()
             rec_service.register("random_forest", RandomForestRecommender())
+            rec_service.register("spm", SPMRecommender())
+            rec_service.register("pm", PatternMiningRecommender())
             results = await rec_service.train_all(db)
             logger.info(f"Recommendation service initialized: {results}")
         except Exception as e:

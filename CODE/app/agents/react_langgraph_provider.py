@@ -54,9 +54,16 @@ YOUR PERSONALITY:
 
 CONVERSATION-FIRST APPROACH:
 
+0. FOLLOW-UP RESPONSES - CHECK CONVERSATION HISTORY:
+   - Short replies ("yes", "no", "ok", etc.) are responses to YOUR previous message
+   - Look at what you last said and act accordingly
+   - If you offered something and they agree, DO IT (call the appropriate tools)
+   - If they decline, acknowledge and offer alternatives
+   - NEVER treat a follow-up as a new conversation start
+
 1. GREETINGS & SMALL TALK - NO TOOLS NEEDED:
    - "Hello", "Hi", "How are you", "Thank you", "Goodbye"
-   - Respond warmly: "Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?"
+   - Respond warmly and ask what they need help with
    - Do NOT call tools for simple greetings
 
 2. EMOTIONAL SUPPORT - EMPATHY FIRST, THEN TOOLS:
@@ -744,12 +751,10 @@ Often the best answers use academic data enhanced with document details:
             }
 
         @tool
-        async def get_course_recommendations(degree_id: str = "LIC-SIS-2019") -> dict:
-            """Get personalized course recommendations ranked by ML-predicted success and academic relevance.
-
-            Uses a machine learning model trained on historical student data to predict
-            which available courses the student is most likely to pass, combined with
-            academic relevance scoring (core courses, semester alignment, prerequisite chains).
+        async def get_course_recommendations(
+            algorithm: str = "random_forest",
+        ) -> dict:
+            """Get personalized course recommendations using ML algorithms trained on historical student data.
 
             ALWAYS use this tool when the student asks for recommendations, suggestions,
             or advice on what courses to take. This includes:
@@ -760,15 +765,32 @@ Often the best answers use academic data enhanced with document details:
             - "What are the best courses for me?"
             - Any question about course recommendations, suggestions, or prioritization
 
+            Available algorithms (choose based on what the student is asking):
+
+            - "random_forest" (default): Predicts pass probability per course using ML features
+              (student history, course difficulty, prerequisites). Best for general "what should I take?"
+              questions. Balances predicted success with academic relevance.
+
+            - "spm" (Sequential Pattern Mining): Discovers common course sequences from successful
+              students and recommends what typically comes next. Best when the student asks about
+              course order, sequences, or "what path should I follow?".
+
+            - "pm" (Pattern Mining): Finds successful students with similar course-taking patterns
+              and recommends what those peers took next. Best when the student asks "what did
+              students like me take?" or wants peer-based advice.
+
             Args:
-                degree_id: Degree program ID (default: LIC-SIS-2019)
+                algorithm: Which recommendation algorithm to use (default: random_forest)
 
             Returns:
-                Dict with ranked recommendations including success probability, relevance score, and reasoning
+                Dict with ranked recommendations including scores and reasoning
             """
+            # degree_id is auto-resolved — the student's degree is known by the system
+            degree_id = "LIC-SIS-2019"
+
             result = await self.tool_executor.execute(
                 tool_name="get_course_recommendations",
-                parameters={"degree_id": degree_id},
+                parameters={"degree_id": degree_id, "algorithm": algorithm},
                 user=self._current_user
             )
 
@@ -779,12 +801,12 @@ Often the best answers use academic data enhanced with document details:
             recommendations = data.get("recommendations", [])
 
             return {
-                "algorithm": data.get("algorithm", "random_forest"),
+                "algorithm": data.get("algorithm", algorithm),
                 "recommendations": recommendations,
                 "count": len(recommendations),
                 "note": (
-                    "Courses ranked by a composite score combining predicted success probability "
-                    "(from ML model) with academic relevance (core vs elective, semester alignment, "
+                    "Courses ranked by a composite score combining algorithm-specific prediction "
+                    "with academic relevance (core vs elective, semester alignment, "
                     "prerequisite unlock value). Higher final_score = stronger recommendation. "
                     "is_core=true means it is a required curriculum course."
                 ),
@@ -804,17 +826,42 @@ Often the best answers use academic data enhanced with document details:
             get_course_recommendations,
         ]
 
-    def _detect_greeting(self, query: str) -> bool:
-        """Detect if query is a simple greeting."""
-        query_lower = query.lower().strip()
-        greetings = ['hello', 'hi', 'hey', 'hola', 'good morning', 'good afternoon',
-                    'good evening', 'buenos dias', 'buenas tardes', 'buenas noches']
+    def _detect_followup(
+        self, query: str, conversation_history: Optional[list]
+    ) -> Optional[str]:
+        """Detect if a short query is a follow-up to a previous assistant message.
 
-        # Check if it's a short greeting (3 words or less)
-        word_count = len(query.split())
-        if word_count <= 3:
-            return any(greeting in query_lower for greeting in greetings)
-        return False
+        Returns an enhanced query with context, or None if not a follow-up.
+        """
+        if not conversation_history or len(conversation_history) < 2:
+            return None
+
+        # Only enhance short messages (likely responses, not new queries)
+        if len(query.split()) > 5:
+            return None
+
+        # Get the last assistant message
+        last_assistant = None
+        for msg in reversed(conversation_history):
+            if msg["role"] == "assistant":
+                last_assistant = msg["content"]
+                break
+
+        if not last_assistant:
+            return None
+
+        # Truncate to last 500 chars to keep context manageable
+        context_snippet = last_assistant[-500:]
+
+        return (
+            f'The student responded: "{query}"\n\n'
+            f"This is a follow-up to your previous message which ended with:\n"
+            f'"""{context_snippet}"""\n\n'
+            f"Interpret their response in the context of what you previously said. "
+            f"If they are agreeing, follow through on what you offered. "
+            f"If they are declining, acknowledge and offer alternatives. "
+            f"If they are asking for clarification, clarify."
+        )
 
     def _detect_emotional_context(self, query: str) -> Optional[str]:
         """Detect emotional context from query keywords."""
@@ -847,32 +894,28 @@ Often the best answers use academic data enhanced with document details:
         # Extract language parameter
         language = kwargs.get("language")
 
-        # Detect simple greetings - respond without agent invocation
-        if self._detect_greeting(query):
-            logger.info("Detected greeting - responding without tools")
-            return AgentResponse(
-                answer="Hi! Great to see you. I'm here to help with your academic journey. What's on your mind today?",
-                agent_steps=[],
-                conversation_id=conversation_id,
-                is_complete=True
-            )
+        # Detect follow-up responses and enhance with context
+        followup_enhanced = self._detect_followup(query, conversation_history)
+        if followup_enhanced:
+            enhanced_query = followup_enhanced
+            logger.info("Detected short follow-up response, enhancing with context")
+        else:
+            enhanced_query = query
 
         # Detect emotional context for better conversation handling
         emotional_context = self._detect_emotional_context(query)
         if emotional_context:
             logger.info(f"Detected emotional context: {emotional_context}")
-            # TODO: Store in conversation metadata when metadata service is implemented
 
         # Initialize agent with user context
         await self._initialize_agent(user)
 
         # Add language instruction to query if specified
-        enhanced_query = query
         if language:
             if language == "spanish":
-                enhanced_query = f"{query}\n\n[IMPORTANT: Respond in Spanish]"
+                enhanced_query = f"{enhanced_query}\n\n[IMPORTANT: Respond in Spanish]"
             elif language == "english":
-                enhanced_query = f"{query}\n\n[IMPORTANT: Respond in English]"
+                enhanced_query = f"{enhanced_query}\n\n[IMPORTANT: Respond in English]"
             logger.info(f"Language specified: {language}")
 
         # Configure thread for conversation persistence
