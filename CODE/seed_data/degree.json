@@ -1,0 +1,16 @@
+{
+  "degree_id": "LIC-SIS-2019",
+  "degree_name": "Licenciatura en Sistemas",
+  "university": "Universidad ORT Uruguay",
+  "total_credits": 168,
+  "duration_semesters": 8,
+  "description": "Licenciatura en Sistemas - Plan 2019. Titulo intermedio: Analista de Sistemas en Computacion (tras 5to semestre).",
+  "department": "Facultad de Ingenieria",
+  "metadata": {
+    "plan_year": 2019,
+    "intermediate_title": "Analista de Sistemas en Computacion",
+    "intermediate_title_semester": 5
+  },
+  "created_at": "2026-02-15T20:02:16.036215",
+  "updated_at": "2026-02-15T20:02:16.036215"
+}

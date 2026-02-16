@@ -93,6 +93,11 @@ async def startup_event():
         academic_service_module.init_academic_service(db)
         logger.info("Academic service initialized")
 
+        # Seed academic data (idempotent - skips if already present)
+        from app.services.seed_service import cleanup_legacy_data, seed_academic_data
+        await cleanup_legacy_data(db)
+        await seed_academic_data(db)
+
         # Initialize RAG service with file_service
         file_service = get_file_service_instance(db)
         rag_service_module.rag_service = rag_service_module.RAGService(file_service=file_service)
