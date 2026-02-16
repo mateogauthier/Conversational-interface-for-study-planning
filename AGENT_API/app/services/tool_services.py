@@ -848,6 +848,54 @@ class AgentToolService:
             logger.error(f"Error in update_student_plan: {e}")
             raise
 
+    async def get_course_recommendations(
+        self,
+        degree_id: str,
+        user_auth0_id: str,
+        user_role: str,
+        algorithm: str = "random_forest",
+        n: int = 10,
+    ) -> Dict[str, Any]:
+        """Get ML-based course recommendations via main API.
+
+        Args:
+            degree_id: Degree ID
+            user_auth0_id: User Auth0 ID
+            user_role: User role
+            algorithm: Recommendation algorithm name
+            n: Number of recommendations
+
+        Returns:
+            Dict with ranked recommendations
+        """
+        try:
+            if not self.http_client:
+                raise RuntimeError("HTTP client not initialized")
+
+            response = await self.http_client.get(
+                f"/academic/students/me/recommendations/{degree_id}",
+                params={"algorithm": algorithm, "n": n},
+                headers=self._create_auth_header(user_auth0_id, user_role),
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            return {
+                "student_id": data["student_id"],
+                "degree_id": data["degree_id"],
+                "algorithm": data["algorithm"],
+                "recommendations": data["recommendations"],
+                "count": data["count"],
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error in get_course_recommendations: {e.response.status_code}")
+            raise ValueError(f"Get recommendations failed: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Error in get_course_recommendations: {e}")
+            raise
+
 
 # Global service instance
 agent_tool_service = AgentToolService()

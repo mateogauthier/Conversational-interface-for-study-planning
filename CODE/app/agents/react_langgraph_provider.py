@@ -314,13 +314,15 @@ Often the best answers use academic data enhanced with document details:
 
         @tool
         async def get_available_courses() -> dict:
-            """Get courses the student can enroll in with prerequisites validated.
+            """Get the full list of courses the student can enroll in (prerequisite filtering only).
 
-            Use this when the user asks about:
-            - "What can I enroll in?" / "a que materias puedo inscribirme?"
-            - "Available courses" / "materias disponibles"
-            - "What should I take next?" / "que debería inscribir?"
-            - "Recommendations" / "recomendaciones"
+            Use this ONLY when the user asks to see all available/eligible courses:
+            - "What can I enroll in?"
+            - "List available courses"
+            - "Which courses have I met the prerequisites for?"
+
+            Do NOT use this for recommendations or advice on what to take next.
+            For recommendations, use get_course_recommendations instead.
 
             Returns:
                 Dict with available courses (prerequisites already checked)
@@ -741,6 +743,53 @@ Often the best answers use academic data enhanced with document details:
                 "message": f"I've noted your {category} goal: '{goal_text}'. I'll keep this in mind as we plan your path forward!"
             }
 
+        @tool
+        async def get_course_recommendations(degree_id: str = "LIC-SIS-2019") -> dict:
+            """Get personalized course recommendations ranked by ML-predicted success and academic relevance.
+
+            Uses a machine learning model trained on historical student data to predict
+            which available courses the student is most likely to pass, combined with
+            academic relevance scoring (core courses, semester alignment, prerequisite chains).
+
+            ALWAYS use this tool when the student asks for recommendations, suggestions,
+            or advice on what courses to take. This includes:
+            - "What do you recommend?" / "que me recomiendas?"
+            - "What should I take next?" / "que deberia cursar?"
+            - "Which courses should I enroll in?" / "a que materias me inscribo?"
+            - "Help me choose courses" / "ayudame a elegir materias"
+            - "What are the best courses for me?"
+            - Any question about course recommendations, suggestions, or prioritization
+
+            Args:
+                degree_id: Degree program ID (default: LIC-SIS-2019)
+
+            Returns:
+                Dict with ranked recommendations including success probability, relevance score, and reasoning
+            """
+            result = await self.tool_executor.execute(
+                tool_name="get_course_recommendations",
+                parameters={"degree_id": degree_id},
+                user=self._current_user
+            )
+
+            if result.error:
+                return {"error": result.error}
+
+            data = result.result
+            recommendations = data.get("recommendations", [])
+
+            return {
+                "algorithm": data.get("algorithm", "random_forest"),
+                "recommendations": recommendations,
+                "count": len(recommendations),
+                "note": (
+                    "Courses ranked by a composite score combining predicted success probability "
+                    "(from ML model) with academic relevance (core vs elective, semester alignment, "
+                    "prerequisite unlock value). Higher final_score = stronger recommendation. "
+                    "is_core=true means it is a required curriculum course."
+                ),
+            }
+
         return [
             search_documents,
             get_completed_courses,
@@ -752,6 +801,7 @@ Often the best answers use academic data enhanced with document details:
             create_study_plan,
             get_student_profile_summary,
             save_student_goal,
+            get_course_recommendations,
         ]
 
     def _detect_greeting(self, query: str) -> bool:

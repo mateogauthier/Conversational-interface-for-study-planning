@@ -98,6 +98,18 @@ async def startup_event():
         await cleanup_legacy_data(db)
         await seed_academic_data(db)
 
+        # Initialize and train recommendation service
+        try:
+            from app.services.recommendation import init_recommendation_service
+            from app.services.recommendation.rf_recommender import RandomForestRecommender
+
+            rec_service = init_recommendation_service()
+            rec_service.register("random_forest", RandomForestRecommender())
+            results = await rec_service.train_all(db)
+            logger.info(f"Recommendation service initialized: {results}")
+        except Exception as e:
+            logger.error(f"Recommendation service init failed (non-fatal): {e}", exc_info=True)
+
         # Initialize RAG service with file_service
         file_service = get_file_service_instance(db)
         rag_service_module.rag_service = rag_service_module.RAGService(file_service=file_service)

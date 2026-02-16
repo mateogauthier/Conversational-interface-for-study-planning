@@ -25,6 +25,10 @@ langchain-ollama==0.2.0
 motor==3.3.2
 pymongo==4.6.1
 
+# Machine Learning / Recommendations
+scikit-learn
+pandas
+
 # Authentication & Security
 python-jose[cryptography]==3.3.0
 auth0-python==4.7.1

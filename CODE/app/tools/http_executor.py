@@ -65,6 +65,7 @@ class HTTPToolExecutor:
             "get_student_plan": "/tools/get_student_plan",
             "update_student_plan": "/tools/update_student_plan",
             "get_student_degree": "/tools/get_student_degree",
+            "get_course_recommendations": "/tools/get_course_recommendations",
         }
 
         endpoint = endpoint_map.get(tool_name)

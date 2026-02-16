@@ -21,7 +21,8 @@ from app.models.schemas import (
     GetStudentDegreeRequest, GetStudentDegreeResponse,
     GetStudentSchoolingRequest, GetStudentSchoolingResponse,
     GetStudentPlanRequest, GetStudentPlanResponse,
-    UpdateStudentPlanRequest, UpdateStudentPlanResponse
+    UpdateStudentPlanRequest, UpdateStudentPlanResponse,
+    GetCourseRecommendationsRequest, GetCourseRecommendationsResponse,
 )
 from app.services.tool_services import agent_tool_service
 
@@ -405,6 +406,33 @@ async def update_student_plan(request: UpdateStudentPlanRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/get_course_recommendations", response_model=GetCourseRecommendationsResponse)
+async def get_course_recommendations(request: GetCourseRecommendationsRequest):
+    """Get ML-based course recommendations for the student."""
+    try:
+        result = await agent_tool_service.get_course_recommendations(
+            degree_id=request.degree_id,
+            user_auth0_id=request.user_auth0_id,
+            user_role=request.user_role,
+            algorithm=request.algorithm,
+            n=request.n,
+        )
+
+        return GetCourseRecommendationsResponse(
+            success=True,
+            message=f"Generated {result['count']} recommendations using {result['algorithm']}",
+            student_id=result["student_id"],
+            degree_id=result["degree_id"],
+            algorithm=result["algorithm"],
+            recommendations=result["recommendations"],
+            count=result["count"],
+        )
+
+    except Exception as e:
+        logger.error(f"Get course recommendations error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================
 # Tool Discovery Endpoint
 # ============================================
@@ -518,6 +546,13 @@ async def list_available_tools():
             "endpoint": "/tools/update_student_plan",
             "method": "PATCH",
             "parameters": ["student_id", "degree_id", "plan_data", "user_id", "user_auth0_id", "user_role"]
+        },
+        {
+            "name": "get_course_recommendations",
+            "description": "Get ML-based course recommendations ranked by predicted success probability",
+            "endpoint": "/tools/get_course_recommendations",
+            "method": "POST",
+            "parameters": ["degree_id", "algorithm", "n", "user_id", "user_auth0_id", "user_role"]
         }
     ]
 

@@ -299,3 +299,26 @@ class UpdateStudentPlanResponse(BaseResponse):
     student_id: str = Field(..., description="Student ID")
     degree_id: str = Field(..., description="Degree ID")
     plan_updated: bool = Field(..., description="Whether plan was successfully updated")
+
+
+# ============================================
+# Recommendation Tool Models
+# ============================================
+
+class GetCourseRecommendationsRequest(BaseModel):
+    """Request to get ML-based course recommendations."""
+    degree_id: str = Field(..., description="Degree ID")
+    algorithm: str = Field(default="random_forest", description="Recommendation algorithm to use")
+    n: int = Field(default=10, description="Number of recommendations")
+    user_id: str = Field(..., description="User ID")
+    user_auth0_id: str = Field(..., description="User Auth0 ID")
+    user_role: str = Field(..., description="User role")
+
+
+class GetCourseRecommendationsResponse(BaseResponse):
+    """Response with ML-based course recommendations."""
+    student_id: str = Field(..., description="Student ID")
+    degree_id: str = Field(..., description="Degree ID")
+    algorithm: str = Field(..., description="Algorithm used")
+    recommendations: List[Dict[str, Any]] = Field(default_factory=list, description="Ranked recommendations")
+    count: int = Field(default=0, description="Number of recommendations")

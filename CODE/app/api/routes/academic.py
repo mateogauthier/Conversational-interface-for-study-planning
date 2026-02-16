@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
 from app.services.academic_service import get_academic_service
+from app.services.recommendation import get_recommendation_service
 from app.db.models import UserInDB
 
 logger = logging.getLogger(__name__)
@@ -631,4 +632,61 @@ async def update_my_plan(
         raise
     except Exception as e:
         logger.error(f"Error updating plan: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# Recommendation Endpoints
+# ============================================
+
+@router.get("/students/me/recommendations/{degree_id}")
+async def get_my_recommendations(
+    degree_id: str,
+    algorithm: str = "random_forest",
+    n: int = 10,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """Get ML-based course recommendations for the current student."""
+    try:
+        academic_service = get_academic_service()
+
+        # Verify degree exists
+        degree = await academic_service.get_degree(degree_id)
+        if not degree:
+            raise HTTPException(status_code=404, detail=f"Degree {degree_id} not found")
+
+        rec_service = get_recommendation_service()
+        recommendations = await rec_service.recommend(
+            student_id=current_user.auth0_id,
+            degree_id=degree_id,
+            db=academic_service.db,
+            algorithm=algorithm,
+            n_recommendations=n,
+        )
+
+        return {
+            "student_id": current_user.auth0_id,
+            "degree_id": degree_id,
+            "algorithm": algorithm,
+            "recommendations": [
+                {
+                    "subject_id": r.subject_id,
+                    "subject_name": r.subject_name,
+                    "p_pass": r.p_pass,
+                    "final_score": r.final_score,
+                    "rank": r.rank,
+                    "is_core": r.is_core,
+                    "reason": r.reason,
+                }
+                for r in recommendations
+            ],
+            "count": len(recommendations),
+        }
+
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting recommendations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
