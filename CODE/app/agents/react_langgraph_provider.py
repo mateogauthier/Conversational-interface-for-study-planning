@@ -181,7 +181,7 @@ Often the best answers use academic data enhanced with document details:
 
             **When NOT to use this tool first:**
             - Questions about student's progress, GPA, or completed courses → use get_completed_courses
-            - Questions about what courses to take → use get_available_courses
+            - Questions about what courses to take or recommendations → use get_course_recommendations
             - Questions about degree requirements → use get_degree_curriculum
 
             Args:
@@ -321,15 +321,13 @@ Often the best answers use academic data enhanced with document details:
 
         @tool
         async def get_available_courses() -> dict:
-            """Get the full list of courses the student can enroll in (prerequisite filtering only).
+            """NEVER use this for course recommendations — use get_course_recommendations instead.
 
-            Use this ONLY when the user asks to see all available/eligible courses:
+            Get the full list of courses the student can enroll in (prerequisite filtering only).
+            Use this ONLY when the user explicitly asks to see ALL available/eligible courses:
             - "What can I enroll in?"
             - "List available courses"
             - "Which courses have I met the prerequisites for?"
-
-            Do NOT use this for recommendations or advice on what to take next.
-            For recommendations, use get_course_recommendations instead.
 
             Returns:
                 Dict with available courses (prerequisites already checked)
@@ -816,6 +814,7 @@ Often the best answers use academic data enhanced with document details:
             search_documents,
             get_completed_courses,
             get_current_courses,
+            get_course_recommendations,
             get_available_courses,
             get_degree_curriculum,
             get_student_plan,
@@ -823,7 +822,6 @@ Often the best answers use academic data enhanced with document details:
             create_study_plan,
             get_student_profile_summary,
             save_student_goal,
-            get_course_recommendations,
         ]
 
     def _detect_followup(

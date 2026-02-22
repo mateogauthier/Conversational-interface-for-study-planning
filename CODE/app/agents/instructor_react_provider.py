@@ -436,25 +436,36 @@ FORMAT REQUIREMENT:
             for prev in previous_results:
                 context += f"- Iteration {prev.iteration_number}: {prev.findings}\n"
 
-        # Build enhanced query - if we have a plan, add guidance; otherwise let ReAct work naturally
-        if plan.execution_steps or plan.required_tools:
-            # We have a structured plan - provide guidance
-            enhanced_query = f"""User question: {query}
+        # Build enhanced query - always add tool-calling instructions when tools are needed
+        if not plan.can_answer_now:
+            if plan.execution_steps or plan.required_tools:
+                # We have specific tools/steps from the planner
+                enhanced_query = f"""User question: {query}
 
 Required actions:
 {chr(10).join([f"- {step}" for step in plan.execution_steps]) if plan.execution_steps else f"Use these tools to answer: {', '.join(plan.required_tools)}"}
 
 IMPORTANT: You MUST use the tools mentioned above to gather the actual student data. Do not make up or guess answers.{context}"""
+            else:
+                # No specific tools listed, but tools are still needed
+                enhanced_query = f"""User question: {query}
+
+IMPORTANT: You MUST call the appropriate tools to answer this question. Do not make up or guess answers.
+Use the available tools to retrieve the student's actual academic data.{context}"""
         else:
-            # No structured plan - let ReAct work autonomously with its native tool calling
+            # Can answer without tools (greetings, general knowledge, etc.)
             enhanced_query = f"{query}{context}"
+
+        # Limit conversation history to avoid the LLM seeing old answers
+        # and skipping tool calls because it thinks it already has the data
+        limited_history = conversation_history[-2:] if conversation_history else None
 
         # Execute ReAct agent with language parameter
         agent_response = await self.base_agent.execute_query(
             query=enhanced_query,
             user=user,
             conversation_id=f"instructor_{user.id}_{iteration}",
-            conversation_history=conversation_history,
+            conversation_history=limited_history,
             language=language  # Pass language to ReAct agent
         )
 
@@ -475,7 +486,9 @@ IMPORTANT: You MUST use the tools mentioned above to gather the actual student d
         # 1. No tools were called AND
         # 2. The plan explicitly said we can't answer without tools (can_answer_now=False) AND
         # 3. The plan specified tools to use OR this is a query that obviously needs data
-        needs_tools = plan.can_answer_now == False and (plan.required_tools or plan.execution_steps)
+        # If the plan says we can't answer now, tools are always needed
+        # (the old check failed for fallback plans with empty required_tools)
+        needs_tools = plan.can_answer_now == False
 
         if not tools_used and needs_tools:
             logger.warning(f"No tools were called but plan indicated tools were needed. LLM may have hallucinated.")
