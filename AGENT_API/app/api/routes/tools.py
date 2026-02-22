@@ -424,6 +424,7 @@ async def get_course_recommendations(request: GetCourseRecommendationsRequest):
             student_id=result["student_id"],
             degree_id=result["degree_id"],
             algorithm=result["algorithm"],
+            algorithms_used=result.get("algorithms_used"),
             recommendations=result["recommendations"],
             count=result["count"],
         )

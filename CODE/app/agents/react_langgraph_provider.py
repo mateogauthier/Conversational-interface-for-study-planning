@@ -749,10 +749,8 @@ Often the best answers use academic data enhanced with document details:
             }
 
         @tool
-        async def get_course_recommendations(
-            algorithm: str = "random_forest",
-        ) -> dict:
-            """Get personalized course recommendations using ML algorithms trained on historical student data.
+        async def get_course_recommendations() -> dict:
+            """Get personalized course recommendations using multiple ML algorithms.
 
             ALWAYS use this tool when the student asks for recommendations, suggestions,
             or advice on what courses to take. This includes:
@@ -763,32 +761,22 @@ Often the best answers use academic data enhanced with document details:
             - "What are the best courses for me?"
             - Any question about course recommendations, suggestions, or prioritization
 
-            Available algorithms (choose based on what the student is asking):
+            This tool runs 3 different ML algorithms and returns combined results:
+            - Random Forest: Predicts pass probability using student history and course difficulty
+            - Sequential Pattern Mining: Discovers common course sequences from successful students
+            - Pattern Mining: Finds similar students and recommends what they took next
 
-            - "random_forest" (default): Predicts pass probability per course using ML features
-              (student history, course difficulty, prerequisites). Best for general "what should I take?"
-              questions. Balances predicted success with academic relevance.
-
-            - "spm" (Sequential Pattern Mining): Discovers common course sequences from successful
-              students and recommends what typically comes next. Best when the student asks about
-              course order, sequences, or "what path should I follow?".
-
-            - "pm" (Pattern Mining): Finds successful students with similar course-taking patterns
-              and recommends what those peers took next. Best when the student asks "what did
-              students like me take?" or wants peer-based advice.
-
-            Args:
-                algorithm: Which recommendation algorithm to use (default: random_forest)
+            Synthesize the results: when multiple algorithms agree on a course, highlight it
+            as a strong recommendation. When they disagree, mention the different perspectives.
 
             Returns:
-                Dict with ranked recommendations including scores and reasoning
+                Dict with recommendations from each algorithm for synthesis
             """
-            # degree_id is auto-resolved — the student's degree is known by the system
             degree_id = "LIC-SIS-2019"
 
             result = await self.tool_executor.execute(
                 tool_name="get_course_recommendations",
-                parameters={"degree_id": degree_id, "algorithm": algorithm},
+                parameters={"degree_id": degree_id, "algorithm": "all"},
                 user=self._current_user
             )
 
@@ -796,18 +784,40 @@ Often the best answers use academic data enhanced with document details:
                 return {"error": result.error}
 
             data = result.result
-            recommendations = data.get("recommendations", [])
+            recommendations = data.get("recommendations", {})
+            algorithms_used = data.get("algorithms_used")
+
+            if algorithms_used:
+                # Compact text format — raw JSON overwhelms the 8B model
+                lines = []
+                for algo_name in algorithms_used:
+                    algo_recs = recommendations.get(algo_name, [])
+                    top = algo_recs[:5]  # Top 5 per algorithm
+                    lines.append(f"\n## {algo_name}")
+                    for r in top:
+                        name = r.get("subject_name", r.get("subject_id", "?"))
+                        score = r.get("final_score", 0)
+                        core = " [CORE]" if r.get("is_core") else ""
+                        lines.append(f"- {name} (score: {score}){core}")
+
+                return {
+                    "summary": "\n".join(lines),
+                    "note": "Courses in multiple algorithms = strong recommendation. [CORE] = required.",
+                }
+
+            # Single algorithm fallback
+            recs_list = recommendations if isinstance(recommendations, list) else []
+            top = recs_list[:5]
+            lines = []
+            for r in top:
+                name = r.get("subject_name", r.get("subject_id", "?"))
+                score = r.get("final_score", 0)
+                core = " [CORE]" if r.get("is_core") else ""
+                lines.append(f"- {name} (score: {score}){core}")
 
             return {
-                "algorithm": data.get("algorithm", algorithm),
-                "recommendations": recommendations,
-                "count": len(recommendations),
-                "note": (
-                    "Courses ranked by a composite score combining algorithm-specific prediction "
-                    "with academic relevance (core vs elective, semester alignment, "
-                    "prerequisite unlock value). Higher final_score = stronger recommendation. "
-                    "is_core=true means it is a required curriculum course."
-                ),
+                "summary": "\n".join(lines),
+                "note": "Higher score = stronger recommendation. [CORE] = required.",
             }
 
         return [

@@ -51,6 +51,27 @@ class RecommendationService:
             raise RuntimeError(f"Recommender '{algorithm}' is not trained yet")
         return await rec.recommend(student_id, degree_id, db, n_recommendations)
 
+    async def recommend_all(
+        self,
+        student_id: str,
+        degree_id: str,
+        db,
+        n_recommendations: int = 10,
+    ) -> Dict[str, List[CourseRecommendation]]:
+        """Run all trained algorithms and return results keyed by algorithm name."""
+        results = {}
+        for name, rec in self._recommenders.items():
+            if not rec.is_trained:
+                logger.warning(f"Skipping untrained recommender '{name}'")
+                continue
+            try:
+                recs = await rec.recommend(student_id, degree_id, db, n_recommendations)
+                results[name] = recs
+                logger.info(f"Algorithm '{name}' returned {len(recs)} recommendations")
+            except Exception as e:
+                logger.error(f"Algorithm '{name}' failed: {e}", exc_info=True)
+        return results
+
     @property
     def available_algorithms(self) -> List[str]:
         return [name for name, rec in self._recommenders.items() if rec.is_trained]

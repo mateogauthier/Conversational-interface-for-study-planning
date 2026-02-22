@@ -656,6 +656,40 @@ async def get_my_recommendations(
             raise HTTPException(status_code=404, detail=f"Degree {degree_id} not found")
 
         rec_service = get_recommendation_service()
+
+        def _serialize_recs(recs):
+            return [
+                {
+                    "subject_id": r.subject_id,
+                    "subject_name": r.subject_name,
+                    "p_pass": r.p_pass,
+                    "final_score": r.final_score,
+                    "rank": r.rank,
+                    "is_core": r.is_core,
+                    "reason": r.reason,
+                }
+                for r in recs
+            ]
+
+        if algorithm == "all":
+            all_results = await rec_service.recommend_all(
+                student_id=current_user.auth0_id,
+                degree_id=degree_id,
+                db=academic_service.db,
+                n_recommendations=n,
+            )
+            return {
+                "student_id": current_user.auth0_id,
+                "degree_id": degree_id,
+                "algorithm": "all",
+                "algorithms_used": list(all_results.keys()),
+                "recommendations": {
+                    algo_name: _serialize_recs(recs)
+                    for algo_name, recs in all_results.items()
+                },
+                "count": sum(len(recs) for recs in all_results.values()),
+            }
+
         recommendations = await rec_service.recommend(
             student_id=current_user.auth0_id,
             degree_id=degree_id,
@@ -668,18 +702,7 @@ async def get_my_recommendations(
             "student_id": current_user.auth0_id,
             "degree_id": degree_id,
             "algorithm": algorithm,
-            "recommendations": [
-                {
-                    "subject_id": r.subject_id,
-                    "subject_name": r.subject_name,
-                    "p_pass": r.p_pass,
-                    "final_score": r.final_score,
-                    "rank": r.rank,
-                    "is_core": r.is_core,
-                    "reason": r.reason,
-                }
-                for r in recommendations
-            ],
+            "recommendations": _serialize_recs(recommendations),
             "count": len(recommendations),
         }
 

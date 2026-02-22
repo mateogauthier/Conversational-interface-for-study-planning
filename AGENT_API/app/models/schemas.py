@@ -319,6 +319,7 @@ class GetCourseRecommendationsResponse(BaseResponse):
     """Response with ML-based course recommendations."""
     student_id: str = Field(..., description="Student ID")
     degree_id: str = Field(..., description="Degree ID")
-    algorithm: str = Field(..., description="Algorithm used")
-    recommendations: List[Dict[str, Any]] = Field(default_factory=list, description="Ranked recommendations")
+    algorithm: str = Field(..., description="Algorithm used (or 'all')")
+    algorithms_used: Optional[List[str]] = Field(None, description="Algorithms used when algorithm='all'")
+    recommendations: Any = Field(default_factory=list, description="Ranked recommendations (list or dict by algorithm)")
     count: int = Field(default=0, description="Number of recommendations")

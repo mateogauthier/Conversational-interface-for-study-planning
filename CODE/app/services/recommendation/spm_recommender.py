@@ -24,8 +24,8 @@ from app.services.recommendation.base import BaseRecommender, CourseRecommendati
 logger = logging.getLogger(__name__)
 
 # PrefixSpan parameters
-DEFAULT_MIN_SUPPORT = 0.05
-DEFAULT_MAX_PATTERN_LEN = 6
+DEFAULT_MIN_SUPPORT = 0.15
+DEFAULT_MAX_PATTERN_LEN = 4
 
 # Weights for composite final_score
 WEIGHT_PATTERN = 0.5
