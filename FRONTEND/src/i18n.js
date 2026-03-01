@@ -65,7 +65,16 @@ const resources = {
         continueConversation: 'Continue Conversation',
         continueBelow: 'Continue the conversation below',
         startOrSelect: 'Start a new conversation or select one from the sidebar',
-        errorMessage: 'Sorry, I encountered an error while processing your query. Please try again.'
+        errorMessage: 'Sorry, I encountered an error while processing your query. Please try again.',
+        // Quick-start buttons
+        quickButton1Text: 'What courses do you recommend?',
+        quickButton1Query: 'What courses do you recommend I enroll in next semester?',
+        quickButton2Text: 'What is my GPA?',
+        quickButton2Query: 'What is my current GPA and how am I doing academically?',
+        quickButton3Text: 'What subjects can I take?',
+        quickButton3Query: 'What subjects am I eligible to enroll in?',
+        quickButton4Text: 'What courses have I completed?',
+        quickButton4Query: 'What courses have I already completed in my degree?'
       },
 
       // Files Page
@@ -338,7 +347,16 @@ const resources = {
         continueConversation: 'Continuar Conversación',
         continueBelow: 'Continúa la conversación abajo',
         startOrSelect: 'Inicia una nueva conversación o selecciona una de la barra lateral',
-        errorMessage: 'Lo siento, encontré un error al procesar tu consulta. Por favor intenta de nuevo.'
+        errorMessage: 'Lo siento, encontré un error al procesar tu consulta. Por favor intenta de nuevo.',
+        // Quick-start buttons
+        quickButton1Text: '¿Qué materias me recomiendas?',
+        quickButton1Query: '¿Qué materias me recomiendas inscribirme el próximo semestre?',
+        quickButton2Text: '¿Cuál es mi promedio?',
+        quickButton2Query: '¿Cuál es mi promedio actual y cómo estoy académicamente?',
+        quickButton3Text: '¿Qué materias puedo cursar?',
+        quickButton3Query: '¿A qué materias puedo inscribirme?',
+        quickButton4Text: '¿Qué materias aprobé?',
+        quickButton4Query: '¿Qué materias ya he aprobado en mi carrera?'
       },
 
       // Files Page

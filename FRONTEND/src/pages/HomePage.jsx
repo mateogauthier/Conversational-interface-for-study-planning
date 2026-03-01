@@ -603,10 +603,10 @@ function HomePage() {
                 padding: '0 1rem'
               }}>
                 {[
-                  { icon: '📚', text: 'Help me plan next semester', query: 'Help me plan my next semester' },
-                  { icon: '📊', text: 'How am I doing academically?', query: 'Give me a summary of my academic progress' },
-                  { icon: '🎯', text: 'What courses can I take?', query: 'What courses can I enroll in next semester?' },
-                  { icon: '💭', text: 'I need course advice', query: 'I need advice on course selection' },
+                  { icon: '🎓', text: t('home.quickButton1Text'), query: t('home.quickButton1Query') },
+                  { icon: '📊', text: t('home.quickButton2Text'), query: t('home.quickButton2Query') },
+                  { icon: '📋', text: t('home.quickButton3Text'), query: t('home.quickButton3Query') },
+                  { icon: '✅', text: t('home.quickButton4Text'), query: t('home.quickButton4Query') },
                 ].map((starter, idx) => (
                   <button
                     key={idx}
