@@ -66,6 +66,12 @@ const resources = {
         continueBelow: 'Continue the conversation below',
         startOrSelect: 'Start a new conversation or select one from the sidebar',
         errorMessage: 'Sorry, I encountered an error while processing your query. Please try again.',
+        errors: {
+          doesNotSupportTools: 'The selected model does not support recommendations and tools. Please choose a model like qwen2.5:7b or qwen2.5:3b in Settings.',
+          agentNotInitialized: 'The assistant service is not ready. Please try again in a moment or contact support.',
+          agentUnavailable: 'The assistant is temporarily unavailable. Please try again later.',
+          agentToolsDisabled: 'Assistant tools are disabled. Use the standard search instead.'
+        },
         // Quick-start buttons
         quickButton1Text: 'What courses do you recommend?',
         quickButton1Query: 'What courses do you recommend I enroll in next semester?',
@@ -348,6 +354,12 @@ const resources = {
         continueBelow: 'Continúa la conversación abajo',
         startOrSelect: 'Inicia una nueva conversación o selecciona una de la barra lateral',
         errorMessage: 'Lo siento, encontré un error al procesar tu consulta. Por favor intenta de nuevo.',
+        errors: {
+          doesNotSupportTools: 'El modelo seleccionado no soporta recomendaciones ni herramientas. Elegí un modelo como qwen2.5:7b o qwen2.5:3b en Configuración.',
+          agentNotInitialized: 'El asistente no está listo. Intentá de nuevo en un momento o contactá soporte.',
+          agentUnavailable: 'El asistente no está disponible temporalmente. Intentá más tarde.',
+          agentToolsDisabled: 'Las herramientas del asistente están desactivadas. Usá la búsqueda estándar.'
+        },
         // Quick-start buttons
         quickButton1Text: '¿Qué materias me recomiendas?',
         quickButton1Query: '¿Qué materias me recomiendas inscribirme el próximo semestre?',

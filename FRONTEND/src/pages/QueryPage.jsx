@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, MessageCircle, FileText, Loader } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ragApi } from '../services/api';
+import { getErrorMessage } from '../utils/errorMessages';
 
 function QueryPage() {
+  const { t, i18n } = useTranslation();
   const [messages, setMessages] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,9 +62,7 @@ function QueryPage() {
     } catch (error) {
       const errorMessage = {
         type: 'assistant',
-        content:
-          error.response?.data?.detail ||
-          'Sorry, I encountered an error while processing your query. Please try again.',
+        content: getErrorMessage(error.response?.data?.detail, t, i18n.language),
         error: true,
         timestamp: new Date(),
       };
