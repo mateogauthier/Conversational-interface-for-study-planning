@@ -9,6 +9,7 @@ import rehypeRaw from 'rehype-raw';
 import mermaid from 'mermaid';
 import AgentSteps from '../components/AgentSteps';
 import ToolConfirmation from '../components/ToolConfirmation';
+import { getErrorMessage, maybeTranslateAgentError } from '../utils/errorMessages';
 
 // Mermaid diagram component
 function MermaidDiagram({ chart }) {
@@ -56,8 +57,11 @@ function MermaidDiagram({ chart }) {
 }
 
 function HomePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { accessToken } = useAuth();
+
+  const formatError = (detail) => getErrorMessage(detail, t, i18n.language);
+  const normalizeAnswer = (text) => maybeTranslateAgentError(text, t, i18n.language);
 
   // Query state
   const [messages, setMessages] = useState([]);
@@ -171,21 +175,21 @@ function HomePage() {
     }
   };
 
-  // Query handlers
-  const handleQuerySubmit = async (e) => {
-    e.preventDefault();
-    if (!query.trim() || queryLoading) return;
+  // Query handlers: sendQuery(text) does the actual send; handleQuerySubmit is for the form.
+  const sendQuery = async (queryText) => {
+    const text = (typeof queryText === 'string' ? queryText : query).trim();
+    if (!text || queryLoading) return;
 
     const userMessage = {
       type: 'user',
-      content: query,
+      content: text,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    const currentQuery = query;
     setQuery('');
     setQueryLoading(true);
+    const currentQuery = text;
 
     try {
       // Get preferences from localStorage
@@ -230,7 +234,7 @@ function HomePage() {
         const assistantMessage = {
           id: response.message_id,
           type: 'assistant',
-          content: response.answer,
+          content: normalizeAnswer(response.answer),
           sources: response.sources || [],
           chunks: response.relevant_chunks || [],
           model: response.model_used,
@@ -253,7 +257,7 @@ function HomePage() {
 
         const assistantMessage = {
           type: 'assistant',
-          content: response.response,
+          content: normalizeAnswer(response.response),
           model: response.model_used,
           timestamp: new Date(),
         };
@@ -263,9 +267,7 @@ function HomePage() {
     } catch (error) {
       const errorMessage = {
         type: 'assistant',
-        content:
-          error.response?.data?.detail ||
-          t('home.errorMessage'),
+        content: formatError(error.response?.data?.detail),
         error: true,
         timestamp: new Date(),
       };
@@ -274,6 +276,11 @@ function HomePage() {
     } finally {
       setQueryLoading(false);
     }
+  };
+
+  const handleQuerySubmit = (e) => {
+    e.preventDefault();
+    sendQuery(query);
   };
 
   // Agent confirmation handlers
@@ -285,7 +292,7 @@ function HomePage() {
     const assistantMessage = {
       id: response.message_id,
       type: 'assistant',
-      content: response.answer,
+      content: normalizeAnswer(response.answer),
       sources: response.sources || [],
       model: response.model_used,
       timestamp: new Date(),
@@ -308,7 +315,7 @@ function HomePage() {
     // Add cancellation message
     const assistantMessage = {
       type: 'assistant',
-      content: response.answer || 'Action cancelled.',
+      content: normalizeAnswer(response.answer || 'Action cancelled.'),
       timestamp: new Date(),
     };
 
@@ -381,7 +388,7 @@ function HomePage() {
     } catch (error) {
       const errorMessage = {
         type: 'assistant',
-        content: error.response?.data?.detail || t('home.errorMessage'),
+        content: formatError(error.response?.data?.detail),
         error: true,
         timestamp: new Date(),
       };
@@ -612,8 +619,7 @@ function HomePage() {
                     key={idx}
                     onClick={() => {
                       setQuery(starter.query);
-                      // Auto-submit after a brief delay to show the query
-                      setTimeout(() => handleSendMessage(starter.query), 100);
+                      setTimeout(() => sendQuery(starter.query), 150);
                     }}
                     style={{
                       display: 'flex',
