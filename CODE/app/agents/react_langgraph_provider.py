@@ -26,15 +26,17 @@ class ReActLangGraphProvider(AgentProvider):
 
     async def _initialize_agent(self, user: UserInDB):
         """Initialize agent with tools bound to current user."""
-        from langchain_ollama import ChatOllama
+        from langchain_openai import ChatOpenAI
         from app.core.config import get_settings
 
         settings = get_settings()
-        llm = ChatOllama(
+        # Use Ollama's OpenAI-compatible endpoint for reliable tool calling.
+        # The native ChatOllama endpoint broke tool calling in Ollama 0.12.x.
+        llm = ChatOpenAI(
             model=settings.ollama_model,
-            base_url=settings.ollama_base_url,
+            base_url=f"{settings.ollama_base_url}/v1",
+            api_key="ollama",
             temperature=0.7,
-            format="",  # Explicitly disable JSON mode to allow tool calling
         )
 
         # Store user for tool access
@@ -749,7 +751,7 @@ Often the best answers use academic data enhanced with document details:
             }
 
         @tool
-        async def get_course_recommendations() -> dict:
+        async def get_course_recommendations(algorithm: str = "all") -> dict:
             """Get personalized course recommendations using multiple ML algorithms.
 
             ALWAYS use this tool when the student asks for recommendations, suggestions,
@@ -952,6 +954,9 @@ Often the best answers use academic data enhanced with document details:
 
             # Extract answer from last AI message
             messages = result.get("messages", [])
+            logger.info(f"[DEBUG] Agent returned {len(messages)} messages")
+            for _dbg_msg in messages:
+                logger.info(f"[DEBUG] msg type={type(_dbg_msg).__name__} tool_calls={getattr(_dbg_msg, 'tool_calls', [])} content_preview={repr((_dbg_msg.content or '')[:80])}")
             answer = ""
             for msg in reversed(messages):
                 if isinstance(msg, AIMessage):
